@@ -281,3 +281,143 @@ test('prova com tempo esgotado conta como tentativa reprovada', async () => {
   assert.strictEqual(old.status, 'expired');
   assert.strictEqual(old.passed, false);
 });
+
+// ---------- recuperação de senha, gestor da empresa e WhatsApp ----------
+
+const http = require('http');
+const settings = require('../src/services/settings');
+
+async function fakeWhatsApp() {
+  const received = [];
+  const srv = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      received.push({ auth: req.headers.authorization, ...JSON.parse(body) });
+      res.end('{"ok":true}');
+    });
+  });
+  await new Promise((r) => srv.listen(0, r));
+  await settings.setMany({
+    whatsapp_api_url: `http://127.0.0.1:${srv.address().port}/api/messages/send`,
+    whatsapp_api_token: 'tok123',
+    public_url: base,
+  });
+  return { received, close: () => srv.close() };
+}
+
+test('recuperação de senha pelo WhatsApp: link único, expira e não revela e-mails', async () => {
+  const wa = await fakeWhatsApp();
+  try {
+    const c = new Client();
+    await c.req('GET', '/recuperar-senha');
+    let r = await c.req('POST', '/recuperar-senha', { email: 'naoexiste@x.com' });
+    assert.match(r.text, /Se <strong>naoexiste@x.com<\/strong> estiver cadastrado/);
+    assert.strictEqual(wa.received.length, 0);
+
+    r = await c.req('POST', '/recuperar-senha', { email: 'MARIA@x.com' });
+    assert.match(r.text, /estiver cadastrado/);
+    assert.strictEqual(wa.received.length, 1);
+    assert.strictEqual(wa.received[0].number, '5511999998888');
+    assert.strictEqual(wa.received[0].auth, 'Bearer tok123');
+    const link = wa.received[0].body.match(/https?:\/\/\S+\/redefinir-senha\/\S+/)[0];
+    const path = new URL(link).pathname;
+
+    r = await c.req('GET', path);
+    assert.match(r.text, /maria@x.com/);
+    r = await c.req('POST', path, { password: 'novaSenha1', confirm: 'diferente' });
+    assert.match(r.text, /A confirmação não confere/);
+    r = await c.req('POST', path, { password: 'novaSenha1', confirm: 'novaSenha1' });
+    assert.strictEqual(r.location, '/login');
+
+    // link não pode ser reutilizado
+    r = await c.req('GET', path);
+    assert.match(r.text, /inválido, já foi usado ou expirou/);
+
+    // senha nova funciona, antiga não
+    const aluno = new Client();
+    await aluno.req('GET', '/login');
+    r = await aluno.req('POST', '/login', { email: 'maria@x.com', password: 'senha123' });
+    assert.strictEqual(r.status, 401);
+    await aluno.login('maria@x.com', 'novaSenha1');
+    await db.query('UPDATE users SET password_hash = $2 WHERE id = $1', [ids.student, await bcrypt.hash('senha123', 4)]);
+
+    // token no banco é hash, não o token puro
+    const token = path.split('/').pop();
+    assert.strictEqual(await db.one('SELECT 1 FROM password_resets WHERE token_hash = $1', [token]), null);
+  } finally {
+    wa.close();
+  }
+});
+
+test('gestor vê só a própria empresa e recebe gatilho de aluno parado', async () => {
+  const wa = await fakeWhatsApp();
+  try {
+    const hash = await bcrypt.hash('senha123', 4);
+    const acme = await db.one(`INSERT INTO companies (name) VALUES ('ACME') RETURNING id`);
+    const other = await db.one(`INSERT INTO companies (name) VALUES ('Outra') RETURNING id`);
+    await db.query('UPDATE users SET company_id = $1 WHERE id = $2', [acme.id, ids.student]);
+    const outsider = await db.one(
+      `INSERT INTO users (name, email, password_hash, role, company_id) VALUES ('Fora', 'fora@x.com', $1, 'student', $2) RETURNING id`,
+      [hash, other.id]);
+    await progress.enroll(outsider.id, ids.course, { silent: true });
+    await db.query(`UPDATE enrollments SET enrolled_at = now() - interval '10 days' WHERE user_id = $1`, [outsider.id]);
+
+    // admin cria o gestor pela tela (exige empresa)
+    const admin = new Client();
+    await admin.login('admin@x.com', 'senha123');
+    let r = await admin.req('POST', '/admin/usuarios', { name: 'Gestor', email: 'gestor@x.com', phone: '11988887777', role: 'manager', password: 'senha123' });
+    assert.match((await admin.req('GET', r.location)).text, /precisa estar vinculado a uma empresa/);
+    r = await admin.req('POST', '/admin/usuarios', {
+      name: 'Gestor ACME', email: 'gestor@x.com', phone: '11988887777', role: 'manager', company_id: acme.id, password: 'senha123',
+    });
+    assert.strictEqual((await db.one(`SELECT role FROM users WHERE email = 'gestor@x.com'`)).role, 'manager');
+
+    const gestor = new Client();
+    await gestor.req('GET', '/login');
+    r = await gestor.req('POST', '/login', { email: 'gestor@x.com', password: 'senha123' });
+    assert.strictEqual(r.location, '/gestor');
+    r = await gestor.req('GET', '/gestor');
+    assert.strictEqual(r.status, 200);
+    assert.match(r.text, /Maria Silva/);
+    assert.doesNotMatch(r.text, /Fora/);
+    r = await gestor.req('GET', `/gestor/curso/${ids.course}`);
+    assert.match(r.text, /Maria Silva/);
+    assert.doesNotMatch(r.text, /fora@x.com/);
+    r = await gestor.req('GET', `/gestor/curso/${ids.course}?formato=csv`);
+    assert.match(r.text, /Maria Silva/);
+    assert.doesNotMatch(r.text, /Fora/);
+    r = await gestor.req('GET', `/gestor/aluno/${ids.student}`);
+    assert.strictEqual(r.status, 200);
+    r = await gestor.req('GET', `/gestor/aluno/${outsider.id}`);
+    assert.strictEqual(r.status, 404);
+    r = await gestor.req('GET', '/admin');
+    assert.strictEqual(r.status, 403);
+
+    // aluno comum não entra no painel do gestor
+    const aluno = new Client();
+    await aluno.login('maria@x.com', 'senha123');
+    assert.strictEqual((await aluno.req('GET', '/gestor')).status, 403);
+
+    // gatilho: aluno parado → WhatsApp para o gestor da empresa
+    const joao = await db.one(`SELECT id FROM users WHERE email = 'joao@x.com'`);
+    await db.query('UPDATE users SET company_id = $1 WHERE id = $2', [acme.id, joao.id]);
+    await db.query(`UPDATE activity SET created_at = now() - interval '10 days' WHERE user_id = $1`, [joao.id]);
+    const t = await db.one(
+      `INSERT INTO triggers (name, event, course_id, conditions, action, action_config)
+       VALUES ('Avisar gestor', 'inactive', $1, '{"days": 3, "include_existing": true}', 'whatsapp',
+               '{"to": "managers", "message": "{{nome}} está parado em {{curso}} ({{progresso}})"}') RETURNING id`, [ids.course]);
+    await triggers.scanScheduled();
+    await triggers.processJobs();
+    const job = await db.one('SELECT * FROM trigger_jobs WHERE trigger_id = $1 AND user_id = $2', [t.id, joao.id]);
+    assert.strictEqual(job.status, 'done', job.last_error);
+    const msg = wa.received.find((m) => m.body.startsWith('João'));
+    assert.ok(msg, 'gestor recebeu a mensagem');
+    assert.strictEqual(msg.number, '5511988887777');
+    // aluno de outra empresa sem gestor → erro registrado, não envia para ninguém errado
+    const outsiderJob = await db.one('SELECT * FROM trigger_jobs WHERE trigger_id = $1 AND user_id = $2', [t.id, outsider.id]);
+    assert.match(outsiderJob.last_error, /não tem gestor/);
+  } finally {
+    wa.close();
+  }
+});

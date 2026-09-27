@@ -1,0 +1,41 @@
+<% if (!details.length) { %><div class="card muted">Nenhuma matrícula.</div><% } %>
+<% details.forEach(({ enrollment: e, state, lpBy, attempts }) => { const cert = certByCourse.get(e.course_id); %>
+<details class="card" open>
+  <summary class="row-between">
+    <span><strong><%= e.title %></strong> — <%= state.percent %>%
+      <% if (e.completed_at) { %><span class="tag success">Concluído em <%= util.formatDate(e.completed_at, false) %> (<%= Math.round((new Date(e.completed_at) - new Date(e.enrolled_at)) / 864e5 * 10) / 10 %> dias)</span><% } %>
+    </span>
+    <span class="small muted">matriculado em <%= util.formatDate(e.enrolled_at, false) %></span>
+  </summary>
+  <%- include('progress', { value: state.percent }) %>
+  <table class="table compact">
+    <tr><th>Módulo / aula</th><th>Assistido</th><th>Tempo assistido</th><th>Início</th><th>Concluída</th></tr>
+    <% state.modules.forEach(m => { %>
+      <tr class="group"><td colspan="5"><strong><%= m.title %></strong> <%= m.completed ? '✅' : m.unlocked ? '' : '🔒 ' + m.lockReasons.join(' • ') %></td></tr>
+      <% m.lessons.forEach(l => { const p = lpBy.get(l.id); %>
+        <tr><td>&nbsp;&nbsp;<%= l.title %></td>
+          <td><%= p ? p.percent + '%' : '—' %></td>
+          <td><%= p ? util.formatDuration(p.watched_seconds) : '—' %><%= l.duration_seconds ? ' / ' + util.formatDuration(l.duration_seconds) : '' %></td>
+          <td><%= p ? util.formatDate(p.started_at) : '—' %></td>
+          <td><%= p && p.completed_at ? util.formatDate(p.completed_at) : '—' %></td></tr>
+      <% }) %>
+    <% }) %>
+  </table>
+  <% if (attempts.length) { %>
+  <h4>Provas</h4>
+  <table class="table compact">
+    <tr><th>Prova</th><th>Data</th><th>Nota</th><th>Resultado</th></tr>
+    <% attempts.forEach(a => { %><tr><td><%= a.title %></td><td><%= util.formatDate(a.finished_at || a.started_at) %></td><td><%= a.score == null ? '—' : a.score + '%' %></td>
+      <td><%= a.status === 'in_progress' ? 'em andamento' : a.status === 'expired' ? '⏰ tempo esgotado' : a.passed ? '✅ aprovado' : '❌ reprovado' %></td></tr><% }) %>
+  </table>
+  <% } %>
+  <p class="actions">
+    <% if (cert) { %><a href="/certificado/<%= cert.code %>" target="_blank">🏆 certificado</a><% } %>
+    <% if (manage) { %>
+    <form method="post" action="/admin/usuarios/<%= target.id %>/cursos/<%= e.course_id %>/resetar" class="inline"><%- include('csrf') %><button class="linklike" data-confirm="Zerar todo o progresso, provas e certificado deste aluno neste curso?">zerar progresso (libera novas tentativas)</button></form>
+    <form method="post" action="/admin/usuarios/<%= target.id %>/cursos/<%= e.course_id %>/remover" class="inline"><%- include('csrf') %><button class="linklike danger" data-confirm="Remover matrícula?">remover matrícula</button></form>
+    <% } %>
+  </p>
+</details>
+<% }) %>
+

@@ -1,6 +1,6 @@
 <%- include('../partials/header') %>
 <h1>Empresas / Clientes</h1>
-<p class="muted">Agrupe os alunos por cliente para matricular em lote e filtrar relatórios.</p>
+<p class="muted">Agrupe os alunos por cliente para matricular em lote e filtrar relatórios. Cadastre um usuário com perfil <strong>Gestor do cliente</strong> para que a empresa acompanhe o progresso da própria equipe em <code>/gestor</code>.</p>
 <% if (can(user, 'students')) { %>
 <form method="post" action="/admin/empresas" class="card inline-form">
   <%- include('../partials/csrf') %>
@@ -13,7 +13,7 @@
   <tr><th>Empresa</th><th>Alunos</th><th>Matrículas</th><th>Concluídas</th><th>Ações</th></tr>
   <% companies.forEach(c => { %>
   <tr>
-    <td><strong><%= c.name %></strong><br><span class="small muted"><%= c.notes %></span></td>
+    <td><strong><%= c.name %></strong><br><span class="small muted"><%= c.notes %></span><% if (c.managers) { %><br><span class="small">Gestor: <%= c.managers %></span><% } %></td>
     <td><a href="/admin/usuarios?empresa=<%= c.id %>"><%= c.students %></a></td><td><%= c.enrollments %></td><td><%= c.completed %></td>
     <td>
       <% if (can(user, 'students')) { %>

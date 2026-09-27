@@ -67,7 +67,8 @@
     <label>Enviar para
       <select name="to" data-to-select>
         <option value="student" <%= a.to !== 'custom' ? 'selected' : '' %>>O próprio aluno</option>
-        <option value="custom" <%= a.to === 'custom' ? 'selected' : '' %>>Outro número/e-mail (ex.: gestor, vendedor)</option>
+        <option value="managers" <%= a.to === 'managers' ? 'selected' : '' %>>Gestor(es) da empresa do aluno</option>
+        <option value="custom" <%= a.to === 'custom' ? 'selected' : '' %>>Outro número/e-mail (ex.: vendedor, seu time)</option>
       </select>
     </label>
     <input name="to_value" value="<%= a.to_value || '' %>" placeholder="Número com DDD ou e-mail" data-to-value>
@@ -94,7 +95,7 @@
     <ul>
       <li><strong>Concluiu em até 7 dias</strong> → WhatsApp de parabéns + certificado.</li>
       <li><strong>Não concluiu em 15 dias</strong> → WhatsApp lembrete com {{progresso}} e {{link_curso}}.</li>
-      <li><strong>Sem acessar há 5 dias</strong> → WhatsApp para o gestor da empresa.</li>
+      <li><strong>Sem acessar há 5 dias</strong> → WhatsApp para o <em>gestor da empresa do aluno</em>.</li>
       <li><strong>Reprovado e esgotou tentativas</strong> → notificar admin.</li>
       <li><strong>Concluiu curso A</strong> → matricular no curso B (trilha).</li>
       <li><strong>Qualquer evento</strong> → webhook para n8n/CRM.</li>

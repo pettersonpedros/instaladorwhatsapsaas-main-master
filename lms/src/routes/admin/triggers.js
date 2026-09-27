@@ -34,7 +34,7 @@ function parseTrigger(b) {
   }
   const cfg = {};
   if (action === 'whatsapp' || action === 'email') {
-    cfg.to = b.to === 'custom' ? 'custom' : 'student';
+    cfg.to = ['custom', 'managers'].includes(b.to) ? b.to : 'student';
     if (cfg.to === 'custom') cfg.to_value = String(b.to_value || '').trim();
     cfg.message = b.message || '';
     if (action === 'email') cfg.subject = b.subject || '';
@@ -128,7 +128,7 @@ router.get('/gatilhos/:id', perm, async (req, res, next) => {
   try {
     const t = await db.one('SELECT * FROM triggers WHERE id = $1', [toInt(req.params.id)]);
     if (!t) throw Object.assign(new Error('Gatilho não encontrado.'), { status: 404 });
-    const students = await db.many(`SELECT id, name FROM users WHERE role = 'student' ORDER BY name LIMIT 500`);
+    const students = await db.many(`SELECT id, name FROM users WHERE role IN ('student', 'manager') ORDER BY name LIMIT 500`);
     res.render('admin/trigger-form', { title: t.name, t, students, ...(await formData()) });
   } catch (err) {
     next(err);

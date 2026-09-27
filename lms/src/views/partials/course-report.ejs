@@ -1,0 +1,40 @@
+<% const statusLabel = { concluido: '✅ Concluído', andamento: '▶️ Em andamento', nao_iniciado: '⏸ Não iniciado' }; %>
+<div class="kpis">
+  <div class="kpi"><span><%= summary.total %></span>Alunos</div>
+  <div class="kpi"><span><%= summary.completed %></span>Concluíram</div>
+  <div class="kpi"><span><%= summary.inProgress %></span>Em andamento</div>
+  <div class="kpi"><span><%= summary.notStarted %></span>Não iniciaram</div>
+</div>
+
+<div class="card scroll-x">
+<table class="table">
+  <tr><th>Aluno</th><th>Empresa</th><th>Status</th><th>Progresso</th><th>Aulas</th><th>Módulo atual</th><th>Dias p/ concluir</th><th>Última atividade</th>
+    <% quizzes.forEach(q => { %><th title="<%= q.title %>">📝 <%= q.title.length > 18 ? q.title.slice(0, 18) + '…' : q.title %></th><% }) %></tr>
+  <% rows.forEach(r => { %>
+  <tr>
+    <td><a href="<%= links.user(r.e.user_id) %>"><%= r.e.name %></a></td>
+    <td><%= r.e.company_name || '—' %></td>
+    <td><%= statusLabel[r.status] %></td>
+    <td class="nowrap"><%- include('progress', { value: r.state.percent }) %> <%= r.state.percent %>%</td>
+    <td><%= r.lessonsDone %>/<%= r.state.lessons.length %></td>
+    <td><%= r.status === 'concluido' ? '—' : (r.currentModule ? r.currentModule.title : '—') %></td>
+    <td><%= r.daysToComplete ?? '—' %></td>
+    <td><%= util.formatDate(r.e.last_course_activity) %></td>
+    <% r.quizzes.forEach(b => { %><td><%= b ? `${b.passed ? '✅' : '❌'} ${b.best}% (${b.attempts}x)` : '—' %></td><% }) %>
+  </tr>
+  <% }) %>
+  <% if (!rows.length) { %><tr><td colspan="<%= 8 + quizzes.length %>" class="muted">Nenhum aluno.</td></tr><% } %>
+</table>
+</div>
+
+<h2>Funil por aula</h2>
+<p class="muted small">Onde os alunos param: compare "assistiram" e "concluíram" aula a aula.</p>
+<table class="table card">
+  <tr><th>Módulo</th><th>Aula</th><th>Duração</th><th>Começaram</th><th>Concluíram</th><th>% médio assistido</th><th></th></tr>
+  <% lessonStats.forEach(l => { %>
+  <tr><td><%= l.module_title %></td><td><%= l.title %></td><td><%= util.formatDuration(l.duration_seconds) || '—' %></td>
+    <td><%= l.viewers %></td><td><%= l.completed %> <% if (summary.total) { %><span class="muted small">(<%= Math.round(l.completed / summary.total * 100) %>%)</span><% } %></td>
+    <td><%= l.avg_percent != null ? l.avg_percent + '%' : '—' %></td>
+    <td><% if (links.lesson) { %><a href="<%= links.lesson(l.id) %>">quem assistiu</a><% } %></td></tr>
+  <% }) %>
+</table>

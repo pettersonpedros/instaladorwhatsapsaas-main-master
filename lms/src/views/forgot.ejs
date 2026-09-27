@@ -1,0 +1,18 @@
+<%- include('partials/header') %>
+<div class="card narrow login">
+  <h1>Recuperar senha</h1>
+  <% if (sent) { %>
+    <div class="alert success">Se <strong><%= email %></strong> estiver cadastrado, enviamos um link para criar uma nova senha no seu WhatsApp e/ou e-mail. O link vale por 60 minutos.</div>
+    <p class="small muted">Não chegou? Confira o spam ou fale com o suporte.</p>
+    <p><a href="/login">Voltar para o login</a></p>
+  <% } else { %>
+    <p class="muted">Informe seu e-mail de acesso. Enviaremos um link para você criar uma nova senha.</p>
+    <form method="post" action="/recuperar-senha">
+      <%- include('partials/csrf') %>
+      <label>E-mail <input type="email" name="email" required autofocus autocomplete="username"></label>
+      <button class="btn block">Enviar link</button>
+    </form>
+    <p class="small"><a href="/login">Voltar para o login</a></p>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

@@ -1,0 +1,13 @@
+<%- include('../partials/header') %>
+<% const statusOptions = { concluido: '✅ Concluído', andamento: '▶️ Em andamento', nao_iniciado: '⏸ Não iniciado' }; %>
+<p class="muted small"><a href="/gestor">Minha equipe</a> ›</p>
+<div class="row-between">
+  <h1><%= course.title %> <span class="muted">· <%= company.name %></span></h1>
+  <a class="btn secondary" href="?<%= new URLSearchParams({ status, formato: 'csv' }) %>">⬇ Exportar CSV (Excel)</a>
+</div>
+<form class="card filters" method="get">
+  <select name="status"><option value="">Todos os status</option><% Object.entries(statusOptions).forEach(([k, v]) => { %><option value="<%= k %>" <%= status === k ? 'selected' : '' %>><%= v %></option><% }) %></select>
+  <button class="btn secondary">Filtrar</button>
+</form>
+<%- include('../partials/course-report') %>
+<%- include('../partials/footer') %>

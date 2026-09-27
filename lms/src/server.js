@@ -50,6 +50,16 @@ function createApp() {
     },
   }));
 
+  // O express-session envia os cabeçalhos antes de terminar de gravar a sessão; o navegador segue
+  // o redirect na hora e pode chegar antes do login/flash existir no banco. Salva antes de redirecionar.
+  app.use((req, res, next) => {
+    const redirect = res.redirect.bind(res);
+    res.redirect = (...args) => {
+      if (!req.session) return redirect(...args);
+      req.session.save((err) => (err ? next(err) : redirect(...args)));
+    };
+    next();
+  });
   app.use(async (req, res, next) => {
     try {
       res.locals.site = await settings.getAll();
@@ -69,6 +79,7 @@ function createApp() {
   app.use(loadUser);
 
   app.use(require('./routes/auth'));
+  app.use('/gestor', require('./routes/manager'));
   app.use(require('./routes/student'));
   app.use('/admin', require('./routes/admin'));
 

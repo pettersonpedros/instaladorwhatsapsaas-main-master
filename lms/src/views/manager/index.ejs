@@ -1,0 +1,38 @@
+<%- include('../partials/header') %>
+<h1>Minha equipe <span class="muted">· <%= company.name %></span></h1>
+<div class="kpis">
+  <div class="kpi"><span><%= kpi.people %></span>Colaboradores</div>
+  <div class="kpi"><span><%= kpi.active7 %></span>Acessaram nos últimos 7 dias</div>
+  <div class="kpi"><span><%= kpi.completed %>/<%= kpi.enrollments %></span>Cursos concluídos</div>
+  <div class="kpi"><span><%= kpi.enrollments ? Math.round(kpi.completed / kpi.enrollments * 100) : 0 %>%</span>Taxa de conclusão</div>
+</div>
+
+<% if (stalled.length) { %>
+<div class="card">
+  <h3>⚠️ Parados há mais de 7 dias</h3>
+  <table class="table compact">
+    <tr><th>Colaborador</th><th>Curso</th><th>Última atividade</th></tr>
+    <% stalled.forEach(s => { %><tr><td><a href="/gestor/aluno/<%= s.id %>"><%= s.name %></a></td><td><%= s.course_title %></td><td><%= util.formatDate(s.last_seen) %></td></tr><% }) %>
+  </table>
+</div>
+<% } %>
+
+<div class="grid two">
+  <div class="card">
+    <h3>Cursos</h3>
+    <table class="table compact">
+      <tr><th>Curso</th><th>Matriculados</th><th>Concluíram</th><th></th></tr>
+      <% courses.forEach(c => { %><tr><td><%= c.title %></td><td><%= c.enrolled %></td><td><%= c.completed %></td><td><a href="/gestor/curso/<%= c.id %>">detalhar</a></td></tr><% }) %>
+      <% if (!courses.length) { %><tr><td colspan="4" class="muted">Nenhuma matrícula ainda.</td></tr><% } %>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Colaboradores</h3>
+    <table class="table compact">
+      <tr><th>Nome</th><th>Cursos</th><th>Último acesso</th></tr>
+      <% people.forEach(p => { %><tr><td><a href="/gestor/aluno/<%= p.id %>"><%= p.name %></a></td><td><%= p.completed %>/<%= p.enrollments %> concluídos</td><td><%= util.formatDate(p.last_activity_at) %></td></tr><% }) %>
+    </table>
+  </div>
+</div>
+<p class="small muted">Precisa incluir ou remover colaboradores? Fale com nosso suporte.</p>
+<%- include('../partials/footer') %>

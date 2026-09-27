@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../../db');
-const progress = require('../../services/progress');
-const { toInt, toCsv, formatDate } = require('../../util');
+const reports = require('../../services/reports');
+const { toInt } = require('../../util');
 
 const router = express.Router();
 
@@ -25,76 +25,19 @@ router.get('/relatorios', async (req, res, next) => {
 
 router.get('/relatorios/curso/:id', async (req, res, next) => {
   try {
-    const course = await db.one('SELECT * FROM courses WHERE id = $1', [toInt(req.params.id)]);
-    if (!course) throw Object.assign(new Error('Curso não encontrado.'), { status: 404 });
     const companyId = toInt(req.query.empresa);
     const status = req.query.status || '';
-    const enrollments = await db.many(
-      `SELECT e.*, u.name, u.email, u.phone, u.last_activity_at, co.name AS company_name,
-         (SELECT max(a.created_at) FROM activity a WHERE a.user_id = e.user_id AND a.course_id = e.course_id) AS last_course_activity
-       FROM enrollments e JOIN users u ON u.id = e.user_id LEFT JOIN companies co ON co.id = u.company_id
-       WHERE e.course_id = $1 AND ($2::int IS NULL OR u.company_id = $2)
-       ORDER BY u.name`, [course.id, companyId]);
-    const quizzes = await db.many('SELECT id, title, pass_score FROM quizzes WHERE course_id = $1 ORDER BY id', [course.id]);
-    const best = await db.many(
-      `SELECT qa.user_id, qa.quiz_id, max(qa.score) AS best, bool_or(qa.passed) AS passed,
-              count(*) FILTER (WHERE qa.status <> 'in_progress')::int AS attempts
-       FROM quiz_attempts qa JOIN quizzes q ON q.id = qa.quiz_id
-       WHERE q.course_id = $1 AND qa.status <> 'in_progress' GROUP BY qa.user_id, qa.quiz_id`, [course.id]);
-    const bestBy = new Map(best.map((b) => [`${b.user_id}:${b.quiz_id}`, b]));
-
-    const rows = [];
-    for (const e of enrollments) {
-      const state = await progress.getCourseState(e.user_id, course.id);
-      const lessonsDone = state.lessons.filter((l) => l.completed).length;
-      const started = state.lessons.some((l) => l.percent > 0 || l.completed);
-      const s = e.completed_at ? 'concluido' : started ? 'andamento' : 'nao_iniciado';
-      if (status && status !== s) continue;
-      const currentModule = state.modules.find((m) => !m.completed);
-      rows.push({
-        e, state, lessonsDone, status: s, currentModule,
-        daysToComplete: e.completed_at ? Math.round(((new Date(e.completed_at) - new Date(e.enrolled_at)) / 86400000) * 10) / 10 : null,
-        quizzes: quizzes.map((q) => bestBy.get(`${e.user_id}:${q.id}`) || null),
-      });
-    }
-
-    const lessonStats = await db.many(
-      `SELECT l.id, l.title, m.title AS module_title, l.duration_seconds,
-         count(lp.user_id)::int AS viewers,
-         count(lp.completed_at)::int AS completed,
-         round(avg(lp.percent))::int AS avg_percent
-       FROM lessons l JOIN modules m ON m.id = l.module_id
-       LEFT JOIN lesson_progress lp ON lp.lesson_id = l.id
-         AND lp.user_id IN (SELECT e.user_id FROM enrollments e JOIN users u ON u.id = e.user_id
-                            WHERE e.course_id = $1 AND ($2::int IS NULL OR u.company_id = $2))
-       WHERE m.course_id = $1
-       GROUP BY l.id, m.position, m.id ORDER BY m.position, m.id, l.position, l.id`, [course.id, companyId]);
-
+    const report = await reports.courseReport(toInt(req.params.id), { companyId, status });
+    if (!report) throw Object.assign(new Error('Curso não encontrado.'), { status: 404 });
     if (req.query.formato === 'csv') {
-      const statusLabel = { concluido: 'Concluído', andamento: 'Em andamento', nao_iniciado: 'Não iniciado' };
-      const header = ['Aluno', 'E-mail', 'Telefone', 'Empresa', 'Matrícula', 'Status', 'Progresso %', 'Aulas concluídas',
-        'Módulo atual', 'Concluído em', 'Dias para concluir', 'Última atividade no curso',
-        ...quizzes.map((q) => `Prova: ${q.title}`)];
-      const csvRows = rows.map((r) => [
-        r.e.name, r.e.email, r.e.phone, r.e.company_name, formatDate(r.e.enrolled_at), statusLabel[r.status], r.state.percent,
-        `${r.lessonsDone}/${r.state.lessons.length}`, r.currentModule?.title || '', formatDate(r.e.completed_at),
-        r.daysToComplete ?? '', formatDate(r.e.last_course_activity),
-        ...r.quizzes.map((b) => (b ? `${b.best}% ${b.passed ? '(aprovado)' : '(reprovado)'} - ${b.attempts} tent.` : '')),
-      ]);
       res.set('Content-Type', 'text/csv; charset=utf-8');
-      res.set('Content-Disposition', `attachment; filename="relatorio-curso-${course.id}.csv"`);
-      return res.send(toCsv(header, csvRows));
+      res.set('Content-Disposition', `attachment; filename="relatorio-curso-${report.course.id}.csv"`);
+      return res.send(reports.courseReportCsv(report));
     }
-
     const companies = await db.many('SELECT id, name FROM companies ORDER BY name');
-    const summary = {
-      total: rows.length,
-      completed: rows.filter((r) => r.status === 'concluido').length,
-      inProgress: rows.filter((r) => r.status === 'andamento').length,
-      notStarted: rows.filter((r) => r.status === 'nao_iniciado').length,
-    };
     res.render('admin/report-course', {
-      title: `Relatório: ${course.title}`, course, rows, quizzes, lessonStats, companies, companyId, status, summary,
+      title: `Relatório: ${report.course.title}`, ...report, companies, companyId, status,
+      links: { back: '/admin/relatorios', user: (id) => `/admin/usuarios/${id}`, lesson: (id) => `/admin/relatorios/aula/${id}` },
     });
   } catch (err) {
     next(err);

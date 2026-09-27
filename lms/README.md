@@ -12,6 +12,7 @@ Stack: Node.js 18+ · Express · PostgreSQL · EJS (renderizado no servidor, sem
 |---|---|
 | **Admin** | Tudo, inclusive equipe e Configurações (WhatsApp, SMTP, marca). |
 | **Funcionário** | Vê painel e relatórios. Permissões opcionais por usuário: editar conteúdo, gerenciar alunos/empresas, gerenciar gatilhos. |
+| **Gestor do cliente** | Vinculado a uma empresa. Em `/gestor` vê (somente leitura) o progresso dos colaboradores da própria empresa: quem está parado, relatório por curso com CSV e ficha de cada um. Também pode fazer cursos. |
 | **Aluno** | Vê só os cursos em que está matriculado. |
 
 Alunos podem ser agrupados por **Empresa** (cliente) para matricular em lote e filtrar relatórios.
@@ -41,6 +42,10 @@ Alunos podem ser agrupados por **Empresa** (cliente) para matricular em lote e f
   - Variáveis: `{{nome}} {{primeiro_nome}} {{curso}} {{modulo}} {{prova}} {{nota}} {{dias}} {{progresso}} {{link_curso}} {{link_certificado}}`...
   - Cada gatilho dispara uma vez por aluno/curso; fila com 3 tentativas, histórico e botão reprocessar.
   - Gatilhos por tempo são cancelados se o aluno concluir antes do envio.
+- **Recuperação de senha** pelo próprio usuário ("Esqueci minha senha"): link de uso único, válido por 60 min,
+  enviado por WhatsApp e/ou e-mail. Não revela se o e-mail existe; limite de pedidos por IP e por usuário;
+  ao trocar a senha, as sessões abertas são encerradas. **Exige WhatsApp ou SMTP configurado.**
+- Gatilhos de WhatsApp/e-mail podem ir para o aluno, para **o(s) gestor(es) da empresa do aluno** ou para um número fixo.
 - Importação de alunos por CSV (`nome;email;telefone;empresa`) e envio de acesso por WhatsApp/e-mail.
 
 ## Instalação (VPS Ubuntu, mesma máquina do Whaticket)
@@ -105,4 +110,7 @@ verifica a liberação do módulo, a conclusão, o certificado, os gatilhos e os
 - O rastreamento roda no navegador; o anti-fraude do servidor impede atalhos óbvios, mas alguém com
   conhecimento técnico consegue simular progresso. Para treinamento de clientes é suficiente; para
   certificação com valor legal, use a prova como critério principal.
-- Recuperação de senha é feita pelo admin ("Redefinir senha / enviar acesso"), não há "esqueci a senha" self-service.
+- Sem WhatsApp nem SMTP configurados, o "Esqueci minha senha" não tem por onde enviar o link; nesse caso o admin
+  redefine a senha pela ficha do usuário.
+- O gestor do cliente não cadastra nem remove colaboradores (só acompanha). Isso é proposital: quem controla as
+  vagas contratadas é você.

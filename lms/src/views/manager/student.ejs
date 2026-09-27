@@ -1,0 +1,11 @@
+<%- include('../partials/header') %>
+<p class="muted small"><a href="/gestor">Minha equipe</a> ›</p>
+<h1><%= target.name %></h1>
+<p class="muted"><%= target.email %> · último acesso <%= util.formatDate(target.last_activity_at) %></p>
+<h2>Cursos e progresso</h2>
+<%- include('../partials/student-progress') %>
+<div class="card">
+  <h3>Linha do tempo</h3>
+  <%- include('../partials/activity', { items: activity }) %>
+</div>
+<%- include('../partials/footer') %>

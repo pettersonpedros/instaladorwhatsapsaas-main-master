@@ -1,5 +1,5 @@
 <%- include('../partials/header') %>
-<% const roleLabel = { admin: 'Admin', staff: 'Funcionário', student: 'Aluno' }; %>
+<% const roleLabel = { admin: 'Admin', staff: 'Funcionário', manager: 'Gestor do cliente', student: 'Aluno' }; %>
 <h1>Usuários</h1>
 <form class="card filters" method="get">
   <input name="q" value="<%= q %>" placeholder="Buscar por nome, e-mail ou telefone">
@@ -18,8 +18,12 @@
     <label>E-mail <input type="email" name="email" required></label>
     <label>WhatsApp (com DDD) <input name="phone" placeholder="11999998888"></label>
     <label>Empresa <select name="company_id"><option value="">—</option><% companies.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select></label>
+    <label>Perfil <select name="role" data-role-select>
+      <option value="student">Aluno</option>
+      <option value="manager">Gestor do cliente (vê os alunos da própria empresa)</option>
+      <% if (user.role === 'admin') { %><option value="staff">Funcionário (equipe)</option><option value="admin">Administrador</option><% } %>
+    </select></label>
     <% if (user.role === 'admin') { %>
-    <label>Perfil <select name="role" data-role-select><option value="student">Aluno</option><option value="staff">Funcionário (equipe)</option><option value="admin">Administrador</option></select></label>
     <fieldset data-perms class="perms"><legend class="small">Permissões do funcionário (relatórios sempre liberados)</legend>
       <% Object.entries(perms).forEach(([k, v]) => { %><label class="check"><input type="checkbox" name="perm_<%= k %>"> <%= v %></label><% }) %>
     </fieldset>

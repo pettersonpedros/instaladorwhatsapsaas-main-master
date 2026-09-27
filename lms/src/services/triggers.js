@@ -94,7 +94,7 @@ async function scanScheduled() {
     if (!days) continue;
     const includeExisting = !!t.conditions?.include_existing;
     const base = `FROM enrollments e
-      JOIN users u ON u.id = e.user_id AND u.active AND u.role = 'student'
+      JOIN users u ON u.id = e.user_id AND u.active AND u.role IN ('student', 'manager')
       JOIN courses c ON c.id = e.course_id AND c.published
       WHERE e.completed_at IS NULL AND ($1::int IS NULL OR e.course_id = $1)`;
     let rows;
@@ -224,11 +224,27 @@ async function runAction(trigger, ctx) {
   const cfg = trigger.action_config || {};
   const { user, course, vars } = await buildVars(ctx);
   if (!user) throw new Error('Usuário não existe mais');
+  const recipients = async (field) => {
+    if (cfg.to === 'custom') return [cfg.to_value];
+    if (cfg.to !== 'managers') return [user[field]];
+    const managers = await db.many(
+      `SELECT phone, email FROM users WHERE role = 'manager' AND active AND company_id = $1 AND id <> $2`,
+      [user.company_id, user.id]);
+    const list = managers.map((m) => m[field]).filter(Boolean);
+    if (!list.length) throw new Error('A empresa do aluno não tem gestor com ' + (field === 'phone' ? 'telefone' : 'e-mail') + ' cadastrado');
+    return list;
+  };
+  const sendAll = async (list, fn) => (await Promise.all(list.map(fn))).join('; ');
   switch (trigger.action) {
-    case 'whatsapp':
-      return sendWhatsApp(cfg.to === 'custom' ? cfg.to_value : user.phone, render(cfg.message, vars));
-    case 'email':
-      return sendEmail(cfg.to === 'custom' ? cfg.to_value : user.email, render(cfg.subject, vars), render(cfg.message, vars));
+    case 'whatsapp': {
+      const text = render(cfg.message, vars);
+      return sendAll(await recipients('phone'), (to) => sendWhatsApp(to, text));
+    }
+    case 'email': {
+      const subject = render(cfg.subject, vars);
+      const text = render(cfg.message, vars);
+      return sendAll(await recipients('email'), (to) => sendEmail(to, subject, text));
+    }
     case 'webhook':
       return callWebhook(cfg.url, {
         event: ctx.event,

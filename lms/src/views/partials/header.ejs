@@ -20,6 +20,7 @@
     <% if (isStaff(user)) { %>
       <% if (inAdmin) { %><a href="/">Ver como aluno</a><% } else { %><a href="/admin">Painel admin</a><% } %>
     <% } else { %>
+      <% if (user.role === 'manager') { %><a href="/gestor" class="<%= path.startsWith('/gestor') ? 'active' : '' %>">Minha equipe</a><% } %>
       <a href="/" class="<%= path === '/' ? 'active' : '' %>">Meus cursos</a>
       <a href="/certificados" class="<%= path === '/certificados' ? 'active' : '' %>">Certificados</a>
     <% } %>

@@ -3,6 +3,7 @@ const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const db = require('../../db');
 const progress = require('../../services/progress');
+const reports = require('../../services/reports');
 const triggers = require('../../services/triggers');
 const settings = require('../../services/settings');
 const { requirePerm } = require('../../middleware');
@@ -23,8 +24,17 @@ function httpError(status, message) {
 }
 
 // Somente admin mexe em usuários da equipe.
+const CLIENT_ROLES = ['student', 'manager'];
+const ALL_ROLES = ['admin', 'staff', ...CLIENT_ROLES];
+
+// Somente admin mexe em usuários da equipe interna; funcionários gerenciam alunos e gestores de clientes.
 function assertCanManage(actor, target) {
-  if (actor.role !== 'admin' && target.role !== 'student') throw httpError(403, 'Somente administradores gerenciam a equipe.');
+  if (actor.role !== 'admin' && !CLIENT_ROLES.includes(target.role)) throw httpError(403, 'Somente administradores gerenciam a equipe.');
+}
+
+function allowedRole(actor, requested, fallback) {
+  const allowed = actor.role === 'admin' ? ALL_ROLES : CLIENT_ROLES;
+  return allowed.includes(requested) ? requested : fallback;
 }
 
 async function sendAccess(user, password) {
@@ -49,6 +59,7 @@ router.get('/empresas', async (req, res, next) => {
   try {
     const companies = await db.many(`SELECT c.*,
         (SELECT count(*) FROM users u WHERE u.company_id = c.id AND u.role = 'student')::int AS students,
+        (SELECT string_agg(u.name, ', ') FROM users u WHERE u.company_id = c.id AND u.role = 'manager') AS managers,
         (SELECT count(*) FROM enrollments e JOIN users u ON u.id = e.user_id WHERE u.company_id = c.id)::int AS enrollments,
         (SELECT count(*) FROM enrollments e JOIN users u ON u.id = e.user_id
           WHERE u.company_id = c.id AND e.completed_at IS NOT NULL)::int AS completed
@@ -109,7 +120,7 @@ router.post('/empresas/:id/matricular', students, async (req, res, next) => {
 router.get('/usuarios', async (req, res, next) => {
   try {
     const q = String(req.query.q || '').trim();
-    const role = ['admin', 'staff', 'student'].includes(req.query.role) ? req.query.role : null;
+    const role = ALL_ROLES.includes(req.query.role) ? req.query.role : null;
     const company = toInt(req.query.empresa);
     const users = await db.many(
       `SELECT u.*, c.name AS company_name,
@@ -129,7 +140,11 @@ router.get('/usuarios', async (req, res, next) => {
 
 router.post('/usuarios', students, async (req, res, next) => {
   try {
-    const role = req.user.role === 'admin' && ['admin', 'staff', 'student'].includes(req.body.role) ? req.body.role : 'student';
+    const role = allowedRole(req.user, req.body.role, 'student');
+    if (role === 'manager' && !toInt(req.body.company_id)) {
+      req.flash('error', 'O gestor precisa estar vinculado a uma empresa.');
+      return res.redirect('/admin/usuarios');
+    }
     const email = String(req.body.email || '').trim().toLowerCase();
     const name = String(req.body.name || '').trim();
     if (!name || !/^\S+@\S+\.\S+$/.test(email)) {
@@ -217,21 +232,7 @@ router.get('/usuarios/:id', async (req, res, next) => {
       'SELECT u.*, c.name AS company_name FROM users u LEFT JOIN companies c ON c.id = u.company_id WHERE u.id = $1',
       [toInt(req.params.id)]);
     if (!target) throw httpError(404, 'Usuário não encontrado.');
-    const enrollments = await db.many(
-      `SELECT e.*, c.title FROM enrollments e JOIN courses c ON c.id = e.course_id WHERE e.user_id = $1 ORDER BY e.enrolled_at DESC`,
-      [target.id]);
-    const details = [];
-    for (const e of enrollments) {
-      const state = await progress.getCourseState(target.id, e.course_id);
-      const lp = await db.many(
-        `SELECT lp.* FROM lesson_progress lp JOIN lessons l ON l.id = lp.lesson_id JOIN modules m ON m.id = l.module_id
-         WHERE lp.user_id = $1 AND m.course_id = $2`, [target.id, e.course_id]);
-      const lpBy = new Map(lp.map((x) => [x.lesson_id, x]));
-      const attempts = await db.many(
-        `SELECT qa.*, q.title FROM quiz_attempts qa JOIN quizzes q ON q.id = qa.quiz_id
-         WHERE qa.user_id = $1 AND q.course_id = $2 ORDER BY qa.id DESC`, [target.id, e.course_id]);
-      details.push({ enrollment: e, state, lpBy, attempts });
-    }
+    const details = await reports.studentDetails(target.id);
     const [activity, jobs, companies, courses, certificates] = await Promise.all([
       db.many(`SELECT a.*, c.title AS course_title, l.title AS lesson_title, q.title AS quiz_title, m.title AS module_title
         FROM activity a LEFT JOIN courses c ON c.id = a.course_id LEFT JOIN lessons l ON l.id = a.lesson_id
@@ -270,9 +271,13 @@ router.post('/usuarios/:id', students, async (req, res, next) => {
     }
     let role = target.role;
     let perms = target.perms;
+    if (target.id !== req.user.id) role = allowedRole(req.user, req.body.role, role);
     if (req.user.role === 'admin' && target.id !== req.user.id) {
-      role = ['admin', 'staff', 'student'].includes(req.body.role) ? req.body.role : role;
       perms = Object.fromEntries(Object.keys(PERMS).map((k) => [k, checkbox(req.body[`perm_${k}`])]));
+    }
+    if (role === 'manager' && !toInt(req.body.company_id)) {
+      req.flash('error', 'O gestor precisa estar vinculado a uma empresa.');
+      return res.redirect(`/admin/usuarios/${target.id}`);
     }
     const active = target.id === req.user.id ? true : checkbox(req.body.active);
     await db.query(
