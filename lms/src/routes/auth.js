@@ -66,9 +66,10 @@ router.post('/login', async (req, res, next) => {
 
 // ---------- recuperação de senha ----------
 
-router.get('/recuperar-senha', (req, res) => {
+router.get('/recuperar-senha', async (req, res) => {
   if (req.user) return res.redirect('/perfil');
-  res.render('forgot', { title: 'Recuperar senha', sent: false, email: '' });
+  const available = !!(await settings.get('smtp_host'));
+  res.render('forgot', { title: 'Recuperar senha', sent: false, email: '', available });
 });
 
 router.post('/recuperar-senha', async (req, res, next) => {
@@ -77,7 +78,10 @@ router.post('/recuperar-senha', async (req, res, next) => {
     const entry = tooMany(req.ip, resetAttempts);
     entry.count++;
     // Resposta sempre igual: não revela se o e-mail existe.
-    const done = () => res.render('forgot', { title: 'Recuperar senha', sent: true, email });
+    const done = () => res.render('forgot', { title: 'Recuperar senha', sent: true, email, available: true });
+    if (!(await settings.get('smtp_host'))) {
+      return res.render('forgot', { title: 'Recuperar senha', sent: false, email, available: false });
+    }
     if (entry.count > 5) return done();
     const user = await db.one('SELECT * FROM users WHERE lower(email) = lower($1) AND active', [email]);
     if (!user) return done();
@@ -94,12 +98,9 @@ router.post('/recuperar-senha', async (req, res, next) => {
     const text = `Olá ${user.name.split(' ')[0]}! Recebemos um pedido para redefinir sua senha na ${site.site_name}.\n\n`
       + `Crie uma nova senha por este link (válido por ${RESET_TTL_MINUTES} minutos):\n${link}\n\n`
       + 'Se não foi você, ignore esta mensagem.';
-    const channels = [];
-    if (user.phone && site.whatsapp_api_url) channels.push(triggers.sendWhatsApp(user.phone, text));
-    if (site.smtp_host) channels.push(triggers.sendEmail(user.email, `Redefinição de senha - ${site.site_name}`, text));
-    if (!channels.length) console.warn(`[senha] nenhum canal configurado para enviar o link a ${user.email}`);
-    const results = await Promise.allSettled(channels);
-    results.filter((r) => r.status === 'rejected').forEach((r) => console.error('[senha] falha no envio:', r.reason.message));
+    // Somente por e-mail: o WhatsApp fica fora para não permitir troca de senha por quem pegar o celular.
+    triggers.sendEmail(user.email, `Redefinição de senha - ${site.site_name}`, text)
+      .catch((err) => console.error('[senha] falha no envio do e-mail:', err.message));
     done();
   } catch (err) {
     next(err);

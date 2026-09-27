@@ -306,21 +306,30 @@ async function fakeWhatsApp() {
   return { received, close: () => srv.close() };
 }
 
-test('recuperação de senha pelo WhatsApp: link único, expira e não revela e-mails', async () => {
+test('recuperação de senha só por e-mail: link único, não usa WhatsApp e não revela e-mails', async () => {
   const wa = await fakeWhatsApp();
+  const emails = [];
+  const originalSendEmail = triggers.sendEmail;
+  triggers.sendEmail = async (to, subject, text) => { emails.push({ to, subject, text }); return 'ok'; };
   try {
     const c = new Client();
-    await c.req('GET', '/recuperar-senha');
-    let r = await c.req('POST', '/recuperar-senha', { email: 'naoexiste@x.com' });
+    // sem SMTP: tela orienta a falar com o suporte
+    const r0 = await c.req('GET', '/recuperar-senha');
+    assert.match(r0.text, /não está disponível/);
+    await settings.setMany({ smtp_host: 'smtp.teste.local' });
+
+    let r = await c.req('GET', '/recuperar-senha');
+    r = await c.req('POST', '/recuperar-senha', { email: 'naoexiste@x.com' });
     assert.match(r.text, /Se <strong>naoexiste@x.com<\/strong> estiver cadastrado/);
-    assert.strictEqual(wa.received.length, 0);
+    assert.strictEqual(emails.length, 0);
 
     r = await c.req('POST', '/recuperar-senha', { email: 'MARIA@x.com' });
     assert.match(r.text, /estiver cadastrado/);
-    assert.strictEqual(wa.received.length, 1);
-    assert.strictEqual(wa.received[0].number, '5511999998888');
-    assert.strictEqual(wa.received[0].auth, 'Bearer tok123');
-    const link = wa.received[0].body.match(/https?:\/\/\S+\/redefinir-senha\/\S+/)[0];
+    await new Promise((res) => setTimeout(res, 50));
+    assert.strictEqual(emails.length, 1);
+    assert.strictEqual(emails[0].to, 'maria@x.com');
+    assert.strictEqual(wa.received.length, 0, 'não deve enviar recuperação por WhatsApp');
+    const link = emails[0].text.match(/https?:\/\/\S+\/redefinir-senha\/\S+/)[0];
     const path = new URL(link).pathname;
 
     r = await c.req('GET', path);
@@ -346,6 +355,8 @@ test('recuperação de senha pelo WhatsApp: link único, expira e não revela e-
     const token = path.split('/').pop();
     assert.strictEqual(await db.one('SELECT 1 FROM password_resets WHERE token_hash = $1', [token]), null);
   } finally {
+    triggers.sendEmail = originalSendEmail;
+    await settings.setMany({ smtp_host: '' });
     wa.close();
   }
 });
