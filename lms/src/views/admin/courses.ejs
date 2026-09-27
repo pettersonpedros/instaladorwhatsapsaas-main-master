@@ -1,0 +1,22 @@
+<%- include('../partials/header') %>
+<div class="row-between"><h1>Cursos</h1></div>
+<% if (can(user, 'content')) { %>
+<form class="card inline-form" method="post" action="/admin/cursos">
+  <%- include('../partials/csrf') %>
+  <input name="title" placeholder="Título do novo curso" required>
+  <button class="btn">+ Criar curso</button>
+</form>
+<% } %>
+<table class="table card">
+  <tr><th>Curso</th><th>Status</th><th>Módulos</th><th>Aulas</th><th>Matriculados</th><th>Concluídos</th><th></th></tr>
+  <% courses.forEach(c => { %>
+  <tr>
+    <td><a href="/admin/cursos/<%= c.id %>"><strong><%= c.title %></strong></a></td>
+    <td><span class="tag <%= c.published ? 'success' : '' %>"><%= c.published ? 'Publicado' : 'Rascunho' %></span></td>
+    <td><%= c.modules %></td><td><%= c.lessons %></td><td><%= c.enrolled %></td><td><%= c.completed %></td>
+    <td class="actions"><a href="/admin/cursos/<%= c.id %>">editar</a> · <a href="/curso/<%= c.id %>">ver</a> · <a href="/admin/relatorios/curso/<%= c.id %>">relatório</a></td>
+  </tr>
+  <% }) %>
+  <% if (!courses.length) { %><tr><td colspan="7" class="muted">Nenhum curso ainda.</td></tr><% } %>
+</table>
+<%- include('../partials/footer') %>

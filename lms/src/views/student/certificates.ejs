@@ -1,0 +1,13 @@
+<%- include('../partials/header') %>
+<h1>Meus certificados</h1>
+<% if (!certs.length) { %><div class="card empty">Conclua um curso para receber seu certificado.</div><% } %>
+<div class="grid cards">
+<% certs.forEach(c => { %>
+  <a class="card cert-card" href="/certificado/<%= c.code %>" target="_blank">
+    <div class="big-icon">🏆</div>
+    <h3><%= c.course_title %></h3>
+    <p class="small muted">Emitido em <%= util.formatDate(c.issued_at, false) %> · código <%= c.code %></p>
+  </a>
+<% }) %>
+</div>
+<%- include('../partials/footer') %>

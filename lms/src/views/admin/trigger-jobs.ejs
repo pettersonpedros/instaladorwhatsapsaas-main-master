@@ -1,0 +1,26 @@
+<%- include('../partials/header') %>
+<% const label = { pending: '⏳ Na fila', running: '⚙️ Executando', done: '✅ Executado', error: '❌ Erro' }; %>
+<p class="muted small"><a href="/admin/gatilhos">Gatilhos</a> ›</p>
+<h1>Execuções de gatilhos</h1>
+<p class="filters">
+  <a class="chip <%= !status ? 'active' : '' %>" href="?">Todas</a>
+  <a class="chip <%= status === 'pending' ? 'active' : '' %>" href="?status=pending">Na fila</a>
+  <a class="chip <%= status === 'done' ? 'active' : '' %>" href="?status=done">Executadas</a>
+  <a class="chip <%= status === 'error' ? 'active' : '' %>" href="?status=error">Com erro</a>
+</p>
+<table class="table card">
+  <tr><th>Criado</th><th>Gatilho</th><th>Aluno</th><th>Agendado p/</th><th>Status</th><th>Resultado</th><th></th></tr>
+  <% jobs.forEach(j => { %>
+  <tr>
+    <td><%= util.formatDate(j.created_at) %></td>
+    <td><a href="/admin/gatilhos/<%= j.trigger_id %>"><%= j.trigger_name %></a></td>
+    <td><a href="/admin/usuarios/<%= j.user_id %>"><%= j.user_name %></a></td>
+    <td><%= util.formatDate(j.run_at) %></td>
+    <td><%= label[j.status] %><%= j.attempts > 1 ? ` (${j.attempts} tent.)` : '' %></td>
+    <td class="small"><%= j.result || '' %><% if (j.last_error) { %><span class="danger"><%= j.last_error %></span><% } %></td>
+    <td><% if (j.status === 'error' && can(user, 'triggers')) { %><form method="post" action="/admin/gatilhos/execucoes/<%= j.id %>/reprocessar" class="inline"><%- include('../partials/csrf') %><button class="btn small">Reprocessar</button></form><% } %></td>
+  </tr>
+  <% }) %>
+  <% if (!jobs.length) { %><tr><td colspan="7" class="muted">Nada por aqui.</td></tr><% } %>
+</table>
+<%- include('../partials/footer') %>

@@ -1,0 +1,33 @@
+<%- include('../partials/header') %>
+<% const editable = can(user, 'content'); const back = '/admin/aulas/' + lesson.id; %>
+<p class="muted small"><a href="/admin/cursos/<%= lesson.course_id %>"><%= lesson.course_title %></a> › <%= lesson.module_title %></p>
+<h1><%= lesson.title %></h1>
+<div class="grid two">
+  <form method="post" action="/admin/aulas/<%= lesson.id %>" class="card stack">
+    <%- include('../partials/csrf') %>
+    <label>Título <input name="title" value="<%= lesson.title %>" required></label>
+    <label>Link do YouTube <input name="youtube" value="<%= lesson.youtube_id ? 'https://youtu.be/' + lesson.youtube_id : '' %>" placeholder="vazio = aula só de texto"></label>
+    <label>Descrição / conteúdo em texto <textarea name="description" rows="6"><%= lesson.description %></textarea></label>
+    <label>% mínimo assistido (vazio = padrão do curso: <%= lesson.course_min %>%) <input type="number" min="1" max="100" name="min_watch_percent" value="<%= lesson.min_watch_percent || '' %>"></label>
+    <label>Módulo
+      <select name="module_id"><% modules.forEach(m => { %><option value="<%= m.id %>" <%= m.id === lesson.module_id ? 'selected' : '' %>><%= m.title %></option><% }) %></select>
+    </label>
+    <% if (editable) { %><button class="btn">Salvar aula</button><% } %>
+    <p class="small muted">Dica: suba o vídeo no YouTube como <strong>Não listado</strong>. Vídeos <em>privados</em> não tocam incorporados.</p>
+  </form>
+  <div>
+    <% if (lesson.youtube_id) { %>
+      <div class="player-wrap"><iframe src="https://www.youtube-nocookie.com/embed/<%= lesson.youtube_id %>" allowfullscreen></iframe></div>
+      <p class="small muted">Duração: <%= lesson.duration_seconds ? util.formatDuration(lesson.duration_seconds) : 'será detectada no primeiro acesso de um aluno' %> · <a href="/admin/relatorios/aula/<%= lesson.id %>">quem assistiu</a></p>
+    <% } %>
+    <div class="card">
+      <h3>📎 Materiais da aula</h3>
+      <%- include('../partials/material-list', { items: materials, back }) %>
+      <% if (editable) { %><%- include('../partials/material-form', { courseId: lesson.course_id, moduleId: lesson.module_id, lessonId: lesson.id, back }) %><% } %>
+    </div>
+    <% if (editable) { %>
+    <form method="post" action="/admin/aulas/<%= lesson.id %>/excluir"><%- include('../partials/csrf') %><button class="btn danger small" data-confirm="Excluir esta aula e o progresso dos alunos nela?">Excluir aula</button></form>
+    <% } %>
+  </div>
+</div>
+<%- include('../partials/footer') %>

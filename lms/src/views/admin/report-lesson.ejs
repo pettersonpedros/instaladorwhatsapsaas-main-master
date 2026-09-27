@@ -1,0 +1,13 @@
+<%- include('../partials/header') %>
+<p class="muted small"><a href="/admin/relatorios/curso/<%= lesson.course_id %>"><%= lesson.course_title %></a> › <%= lesson.module_title %></p>
+<h1>👁 <%= lesson.title %></h1>
+<table class="table card">
+  <tr><th>Aluno</th><th>Empresa</th><th>% assistido</th><th>Tempo assistido</th><th>Começou</th><th>Último play</th><th>Concluiu</th></tr>
+  <% rows.forEach(r => { %>
+  <tr><td><a href="/admin/usuarios/<%= r.id %>"><%= r.name %></a></td><td><%= r.company_name || '—' %></td>
+    <td class="nowrap"><%- include('../partials/progress', { value: r.percent || 0 }) %> <%= r.percent != null ? r.percent + '%' : 'não abriu' %></td>
+    <td><%= r.watched_seconds != null ? util.formatDuration(r.watched_seconds) : '—' %></td>
+    <td><%= util.formatDate(r.started_at) %></td><td><%= util.formatDate(r.last_heartbeat_at) %></td><td><%= util.formatDate(r.completed_at) %></td></tr>
+  <% }) %>
+</table>
+<%- include('../partials/footer') %>

@@ -1,0 +1,22 @@
+<%- include('../partials/header') %>
+<div class="row-between">
+  <h1>Gatilhos</h1>
+  <div><a class="btn secondary" href="/admin/gatilhos/execucoes">Histórico de execuções</a>
+  <% if (can(user, 'triggers')) { %><a class="btn" href="/admin/gatilhos/novo">+ Novo gatilho</a><% } %></div>
+</div>
+<p class="muted">Automatize mensagens e ações: "Quando <em>evento</em> (e condição) → espere X → faça <em>ação</em>". Cada gatilho dispara no máximo uma vez por aluno/curso (ou por tentativa de prova).</p>
+<table class="table card">
+  <tr><th>Nome</th><th>Quando</th><th>Curso</th><th>Ação</th><th>Execuções</th><th></th></tr>
+  <% list.forEach(t => { %>
+  <tr class="<%= t.active ? '' : 'inactive' %>">
+    <td><a href="/admin/gatilhos/<%= t.id %>"><strong><%= t.name %></strong></a></td>
+    <td><%= EVENTS[t.event].label.replace('X', t.conditions.days || 'X') %><%= t.event === 'course_completed' && t.conditions.days ? ` (${t.conditions.comparison === 'after' ? 'depois de' : 'em até'} ${t.conditions.days} dias)` : '' %><%= t.delay_minutes ? ` · espera ${t.delay_minutes >= 1440 ? (t.delay_minutes / 1440) + 'd' : t.delay_minutes >= 60 ? (t.delay_minutes / 60) + 'h' : t.delay_minutes + 'min'}` : '' %></td>
+    <td><%= t.course_title || 'Qualquer curso' %></td>
+    <td><%= ACTIONS[t.action] %></td>
+    <td><a href="/admin/gatilhos/execucoes?gatilho=<%= t.id %>"><%= t.done %> ok</a><%= t.pending ? ` · ${t.pending} na fila` : '' %><% if (t.errors) { %> · <span class="danger"><%= t.errors %> erro(s)</span><% } %></td>
+    <td><% if (can(user, 'triggers')) { %><form method="post" action="/admin/gatilhos/<%= t.id %>/alternar" class="inline"><%- include('../partials/csrf') %><button class="btn small <%= t.active ? 'secondary' : '' %>"><%= t.active ? 'Pausar' : 'Ativar' %></button></form><% } %></td>
+  </tr>
+  <% }) %>
+  <% if (!list.length) { %><tr><td colspan="6" class="muted">Nenhum gatilho. Exemplo: "Concluiu o curso em até 7 dias → WhatsApp de parabéns com o certificado".</td></tr><% } %>
+</table>
+<%- include('../partials/footer') %>

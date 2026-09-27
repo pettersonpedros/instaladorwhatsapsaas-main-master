@@ -1,0 +1,14 @@
+<%- include('../partials/header') %>
+<div class="card narrow">
+  <h1>Meu perfil</h1>
+  <p><strong><%= user.name %></strong><br><span class="muted"><%= user.email %><%= user.phone ? ' · ' + user.phone : '' %></span></p>
+  <h3>Alterar senha</h3>
+  <form method="post" action="/perfil">
+    <%- include('../partials/csrf') %>
+    <label>Senha atual <input type="password" name="current" required autocomplete="current-password"></label>
+    <label>Nova senha <input type="password" name="password" minlength="6" required autocomplete="new-password"></label>
+    <label>Confirmar nova senha <input type="password" name="confirm" minlength="6" required autocomplete="new-password"></label>
+    <button class="btn">Salvar</button>
+  </form>
+</div>
+<%- include('../partials/footer') %>

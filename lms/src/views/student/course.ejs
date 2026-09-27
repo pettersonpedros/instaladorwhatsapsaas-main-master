@@ -1,0 +1,80 @@
+<%- include('../partials/header') %>
+<% const c = state.course; %>
+<div class="course-hero card">
+  <div>
+    <p class="muted small"><a href="/">Meus cursos</a> ›</p>
+    <h1><%= c.title %></h1>
+    <% if (c.description) { %><p class="pre"><%= c.description %></p><% } %>
+    <% if (preview) { %><div class="alert info">Modo pré-visualização da equipe: tudo liberado e o progresso não é registrado.</div><% } %>
+  </div>
+  <div class="hero-side">
+    <div class="big-number"><%= state.percent %>%</div>
+    <%- include('../partials/progress', { value: state.percent }) %>
+    <p class="small muted"><%= state.doneItems %> de <%= state.totalItems %> etapas</p>
+    <% if (cert) { %>
+      <a class="btn success block" href="/certificado/<%= cert.code %>" target="_blank">🏆 Ver certificado</a>
+    <% } else if (next) { %>
+      <a class="btn block" href="/aula/<%= next.id %>"><%= state.percent > 0 ? 'Continuar' : 'Começar' %>: <%= next.title %></a>
+    <% } %>
+  </div>
+</div>
+
+<% const courseMaterials = materials.filter(m => !m.module_id); %>
+<% if (courseMaterials.length) { %>
+<div class="card">
+  <h3>📎 Materiais do curso</h3>
+  <ul class="materials"><% courseMaterials.forEach(m => { %><li><a href="/material/<%= m.id %>" target="_blank"><%= m.kind === 'file' ? '📄' : '🔗' %> <%= m.title %></a></li><% }) %></ul>
+</div>
+<% } %>
+
+<% state.modules.forEach((m, i) => { %>
+<section class="card module <%= m.unlocked ? '' : 'locked' %>" id="modulo-<%= m.id %>">
+  <div class="module-head">
+    <h2><span class="muted">Módulo <%= i + 1 %> ·</span> <%= m.title %></h2>
+    <% if (m.completed && (m.lessons.length || m.quizzes.length)) { %><span class="tag success">✓ Concluído</span>
+    <% } else if (!m.unlocked) { %><span class="tag warn">🔒 Bloqueado</span><% } %>
+  </div>
+  <% if (m.description) { %><p class="muted pre"><%= m.description %></p><% } %>
+  <% if (!m.unlocked) { %>
+    <div class="alert warn small">Para liberar: <%= m.lockReasons.join(' • ') %></div>
+  <% } %>
+  <ul class="items">
+  <% m.lessons.forEach(l => { %>
+    <li class="<%= l.completed ? 'done' : '' %> <%= l.available ? '' : 'disabled' %>">
+      <span class="icon"><%= l.completed ? '✅' : l.available ? (l.youtube_id ? '▶️' : '📖') : '🔒' %></span>
+      <% if (l.available) { %><a href="/aula/<%= l.id %>"><%= l.title %></a><% } else { %><span title="<%= lockedReason(state, m) %>"><%= l.title %></span><% } %>
+      <span class="meta">
+        <% if (l.duration_seconds) { %><%= util.formatDuration(l.duration_seconds) %><% } %>
+        <% if (!l.completed && l.percent > 0) { %> · <%= l.percent %>% assistido<% } %>
+      </span>
+    </li>
+  <% }) %>
+  <% m.quizzes.forEach(q => { %>
+    <li class="<%= q.passed ? 'done' : '' %> <%= q.available ? '' : 'disabled' %>">
+      <span class="icon"><%= q.passed ? '✅' : q.available ? '📝' : '🔒' %></span>
+      <% if (q.available) { %><a href="/prova/<%= q.id %>">Prova: <%= q.title %></a><% } else { %><span title="Conclua todas as aulas do módulo">Prova: <%= q.title %></span><% } %>
+      <span class="meta"><% if (q.best != null) { %>Melhor nota: <%= q.best %>%<% } else { %>Mínimo <%= q.pass_score %>%<% } %><%= q.required ? '' : ' · opcional' %></span>
+    </li>
+  <% }) %>
+  </ul>
+  <% const mm = materials.filter(x => x.module_id === m.id); if (mm.length && m.unlocked) { %>
+    <p class="small"><strong>Materiais:</strong> <% mm.forEach(x => { %><a href="/material/<%= x.id %>" target="_blank" class="chip"><%= x.kind === 'file' ? '📄' : '🔗' %> <%= x.title %></a> <% }) %></p>
+  <% } %>
+</section>
+<% }) %>
+
+<% if (state.finalQuizzes.length) { %>
+<section class="card module">
+  <h2>Avaliação final</h2>
+  <ul class="items">
+  <% state.finalQuizzes.forEach(q => { %>
+    <li class="<%= q.passed ? 'done' : '' %> <%= q.available ? '' : 'disabled' %>">
+      <span class="icon"><%= q.passed ? '✅' : q.available ? '📝' : '🔒' %></span>
+      <% if (q.available) { %><a href="/prova/<%= q.id %>"><%= q.title %></a><% } else { %><span>Conclua todas as aulas para liberar: <%= q.title %></span><% } %>
+      <span class="meta"><% if (q.best != null) { %>Melhor nota: <%= q.best %>%<% } else { %>Mínimo <%= q.pass_score %>%<% } %></span>
+    </li>
+  <% }) %>
+  </ul>
+</section>
+<% } %>
+<%- include('../partials/footer') %>

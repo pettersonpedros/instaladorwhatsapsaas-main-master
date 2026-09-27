@@ -1,0 +1,108 @@
+<%- include('../partials/header') %>
+<% const roleLabel = { admin: 'Admin', staff: 'Funcionário', student: 'Aluno' };
+   const manage = can(user, 'students') && (user.role === 'admin' || target.role === 'student'); %>
+<p class="muted small"><a href="/admin/usuarios">Usuários</a> ›</p>
+<div class="row-between">
+  <h1><%= target.name %> <span class="tag"><%= roleLabel[target.role] %></span><%= target.active ? '' : ' (inativo)' %></h1>
+</div>
+<p class="muted"><%= target.email %> · <%= target.phone || 'sem telefone' %> · <%= target.company_name || 'sem empresa' %> · cadastro <%= util.formatDate(target.created_at, false) %> · último acesso <%= util.formatDate(target.last_activity_at) %></p>
+
+<h2>Cursos e progresso</h2>
+<% if (!details.length) { %><div class="card muted">Nenhuma matrícula.</div><% } %>
+<% details.forEach(({ enrollment: e, state, lpBy, attempts }) => { const cert = certByCourse.get(e.course_id); %>
+<details class="card" open>
+  <summary class="row-between">
+    <span><strong><%= e.title %></strong> — <%= state.percent %>%
+      <% if (e.completed_at) { %><span class="tag success">Concluído em <%= util.formatDate(e.completed_at, false) %> (<%= Math.round((new Date(e.completed_at) - new Date(e.enrolled_at)) / 864e5 * 10) / 10 %> dias)</span><% } %>
+    </span>
+    <span class="small muted">matriculado em <%= util.formatDate(e.enrolled_at, false) %></span>
+  </summary>
+  <%- include('../partials/progress', { value: state.percent }) %>
+  <table class="table compact">
+    <tr><th>Módulo / aula</th><th>Assistido</th><th>Tempo assistido</th><th>Início</th><th>Concluída</th></tr>
+    <% state.modules.forEach(m => { %>
+      <tr class="group"><td colspan="5"><strong><%= m.title %></strong> <%= m.completed ? '✅' : m.unlocked ? '' : '🔒 ' + m.lockReasons.join(' • ') %></td></tr>
+      <% m.lessons.forEach(l => { const p = lpBy.get(l.id); %>
+        <tr><td>&nbsp;&nbsp;<%= l.title %></td>
+          <td><%= p ? p.percent + '%' : '—' %></td>
+          <td><%= p ? util.formatDuration(p.watched_seconds) : '—' %><%= l.duration_seconds ? ' / ' + util.formatDuration(l.duration_seconds) : '' %></td>
+          <td><%= p ? util.formatDate(p.started_at) : '—' %></td>
+          <td><%= p && p.completed_at ? util.formatDate(p.completed_at) : '—' %></td></tr>
+      <% }) %>
+    <% }) %>
+  </table>
+  <% if (attempts.length) { %>
+  <h4>Provas</h4>
+  <table class="table compact">
+    <tr><th>Prova</th><th>Data</th><th>Nota</th><th>Resultado</th></tr>
+    <% attempts.forEach(a => { %><tr><td><%= a.title %></td><td><%= util.formatDate(a.finished_at || a.started_at) %></td><td><%= a.score == null ? '—' : a.score + '%' %></td>
+      <td><%= a.status === 'in_progress' ? 'em andamento' : a.status === 'expired' ? '⏰ tempo esgotado' : a.passed ? '✅ aprovado' : '❌ reprovado' %></td></tr><% }) %>
+  </table>
+  <% } %>
+  <p class="actions">
+    <% if (cert) { %><a href="/certificado/<%= cert.code %>" target="_blank">🏆 certificado</a><% } %>
+    <% if (manage) { %>
+    <form method="post" action="/admin/usuarios/<%= target.id %>/cursos/<%= e.course_id %>/resetar" class="inline"><%- include('../partials/csrf') %><button class="linklike" data-confirm="Zerar todo o progresso, provas e certificado deste aluno neste curso?">zerar progresso (libera novas tentativas)</button></form>
+    <form method="post" action="/admin/usuarios/<%= target.id %>/cursos/<%= e.course_id %>/remover" class="inline"><%- include('../partials/csrf') %><button class="linklike danger" data-confirm="Remover matrícula?">remover matrícula</button></form>
+    <% } %>
+  </p>
+</details>
+<% }) %>
+
+<% if (manage) { %>
+<form method="post" action="/admin/usuarios/<%= target.id %>/matricular" class="card inline-form">
+  <%- include('../partials/csrf') %>
+  <select name="course_id"><% courses.forEach(c => { %><option value="<%= c.id %>"><%= c.title %></option><% }) %></select>
+  <button class="btn">+ Matricular</button>
+</form>
+<% } %>
+
+<div class="grid two">
+  <div class="card">
+    <h3>Linha do tempo</h3>
+    <%- include('../partials/activity', { items: activity }) %>
+  </div>
+  <div>
+    <% if (jobs.length) { %>
+    <div class="card">
+      <h3>Gatilhos disparados</h3>
+      <ul class="timeline">
+        <% jobs.forEach(j => { %><li><span class="muted small"><%= util.formatDate(j.created_at) %></span> <%= j.trigger_name %> — <span class="tag <%= j.status === 'done' ? 'success' : j.status === 'error' ? 'danger' : '' %>"><%= j.status %></span> <span class="small"><%= j.result || j.last_error || '' %></span></li><% }) %>
+      </ul>
+    </div>
+    <% } %>
+    <% if (manage) { %>
+    <details class="card">
+      <summary><strong>Editar cadastro</strong></summary>
+      <form method="post" action="/admin/usuarios/<%= target.id %>" class="stack">
+        <%- include('../partials/csrf') %>
+        <label>Nome <input name="name" value="<%= target.name %>" required></label>
+        <label>E-mail <input type="email" name="email" value="<%= target.email %>" required></label>
+        <label>WhatsApp <input name="phone" value="<%= target.phone || '' %>"></label>
+        <label>Empresa <select name="company_id"><option value="">—</option><% companies.forEach(c => { %><option value="<%= c.id %>" <%= c.id === target.company_id ? 'selected' : '' %>><%= c.name %></option><% }) %></select></label>
+        <% if (user.role === 'admin' && target.id !== user.id) { %>
+          <label>Perfil <select name="role" data-role-select><% Object.entries(roleLabel).forEach(([k, v]) => { %><option value="<%= k %>" <%= target.role === k ? 'selected' : '' %>><%= v %></option><% }) %></select></label>
+          <fieldset data-perms class="perms"><legend class="small">Permissões do funcionário</legend>
+            <% Object.entries(perms).forEach(([k, v]) => { %><label class="check"><input type="checkbox" name="perm_<%= k %>" <%= target.perms[k] ? 'checked' : '' %>> <%= v %></label><% }) %>
+          </fieldset>
+        <% } %>
+        <% if (target.id !== user.id) { %><label class="check"><input type="checkbox" name="active" <%= target.active ? 'checked' : '' %>> Ativo (desmarque para bloquear o acesso)</label><% } %>
+        <button class="btn">Salvar</button>
+      </form>
+    </details>
+    <details class="card">
+      <summary><strong>Redefinir senha / enviar acesso</strong></summary>
+      <form method="post" action="/admin/usuarios/<%= target.id %>/senha" class="stack">
+        <%- include('../partials/csrf') %>
+        <input name="password" placeholder="Nova senha (vazio = gerar)">
+        <label class="check"><input type="checkbox" name="send_access" checked> Enviar por WhatsApp/e-mail</label>
+        <button class="btn secondary">Redefinir senha</button>
+      </form>
+    </details>
+    <% if (target.id !== user.id) { %>
+    <form method="post" action="/admin/usuarios/<%= target.id %>/excluir"><%- include('../partials/csrf') %><button class="btn danger small" data-confirm="Excluir o usuário e todo o histórico? Prefira desativar.">Excluir usuário</button></form>
+    <% } %>
+    <% } %>
+  </div>
+</div>
+<%- include('../partials/footer') %>

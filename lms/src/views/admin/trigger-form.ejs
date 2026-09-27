@@ -1,0 +1,115 @@
+<%- include('../partials/header') %>
+<% const c = t.conditions || {}; const a = t.action_config || {};
+   const dm = t.delay_minutes || 0;
+   const delayUnit = dm && dm % 1440 === 0 ? 'days' : dm && dm % 60 === 0 ? 'hours' : 'minutes';
+   const delayValue = delayUnit === 'days' ? dm / 1440 : delayUnit === 'hours' ? dm / 60 : dm; %>
+<p class="muted small"><a href="/admin/gatilhos">Gatilhos</a> ›</p>
+<h1><%= t.id ? t.name : 'Novo gatilho' %></h1>
+<div class="grid two-one">
+<form method="post" action="<%= t.id ? '/admin/gatilhos/' + t.id : '/admin/gatilhos' %>" class="card stack trigger-form">
+  <%- include('../partials/csrf') %>
+  <label>Nome interno <input name="name" value="<%= t.name %>" placeholder="Ex.: Parabéns por concluir rápido"></label>
+  <label class="check"><input type="checkbox" name="active" <%= t.active ? 'checked' : '' %>> Ativo</label>
+
+  <h3>1. Quando</h3>
+  <label>Evento
+    <select name="event" data-event-select>
+      <% Object.entries(EVENTS).forEach(([k, v]) => { %><option value="<%= k %>" <%= t.event === k ? 'selected' : '' %>><%= v.label %><%= v.scheduled ? ' ⏱' : '' %></option><% }) %>
+    </select>
+  </label>
+  <label>Curso
+    <select name="course_id"><option value="">Qualquer curso</option><% courses.forEach(co => { %><option value="<%= co.id %>" <%= t.course_id === co.id ? 'selected' : '' %>><%= co.title %></option><% }) %></select>
+  </label>
+  <label data-show-event="module_completed lesson_completed">Módulo (opcional)
+    <select name="module_id"><option value="">Qualquer módulo</option><% modules.forEach(m => { %><option value="<%= m.id %>" <%= t.module_id === m.id ? 'selected' : '' %>><%= m.course_title %> › <%= m.title %></option><% }) %></select>
+  </label>
+  <label data-show-event="quiz_passed quiz_failed">Prova (opcional)
+    <select name="quiz_id"><option value="">Qualquer prova</option><% quizzes.forEach(q => { %><option value="<%= q.id %>" <%= t.quiz_id === q.id ? 'selected' : '' %>><%= q.course_title %> › <%= q.title %></option><% }) %></select>
+  </label>
+
+  <h3>2. Condição</h3>
+  <div data-show-event="course_completed" class="inline-form">
+    <span>Concluiu</span>
+    <select name="comparison"><option value="within" <%= c.comparison !== 'after' ? 'selected' : '' %>>em até</option><option value="after" <%= c.comparison === 'after' ? 'selected' : '' %>>depois de</option></select>
+    <input type="number" name="days" min="1" value="<%= c.days || '' %>" placeholder="dias" data-days>
+    <span>dias da matrícula <span class="muted small">(vazio = qualquer tempo)</span></span>
+  </div>
+  <div data-show-event="course_not_completed not_started inactive" class="stack">
+    <label>Quantidade de dias <input type="number" name="days" min="1" value="<%= c.days || '' %>" data-days></label>
+    <label class="check"><input type="checkbox" name="include_existing" <%= c.include_existing ? 'checked' : '' %>> Incluir alunos que já passaram do prazo antes deste gatilho existir <span class="muted small">(cuidado: pode disparar para muitos de uma vez)</span></label>
+    <p class="small muted">⏱ Verificado automaticamente a cada 5 minutos. Se o aluno concluir o curso antes do envio, a ação é cancelada.</p>
+  </div>
+  <div data-show-event="quiz_passed quiz_failed" class="inline-form">
+    <label>Nota mín. <input type="number" name="min_score" min="0" max="100" value="<%= c.min_score ?? '' %>"></label>
+    <label>Nota máx. <input type="number" name="max_score" min="0" max="100" value="<%= c.max_score ?? '' %>"></label>
+  </div>
+  <label class="check" data-show-event="quiz_failed"><input type="checkbox" name="attempts_exhausted" <%= c.attempts_exhausted ? 'checked' : '' %>> Somente quando esgotar todas as tentativas</label>
+  <p class="small muted" data-show-event="enrolled lesson_completed module_completed">Sem condições extras para este evento.</p>
+
+  <h3>3. Esperar</h3>
+  <div class="inline-form">
+    <input type="number" name="delay" min="0" value="<%= delayValue %>">
+    <select name="delay_unit">
+      <option value="minutes" <%= delayUnit === 'minutes' ? 'selected' : '' %>>minutos</option>
+      <option value="hours" <%= delayUnit === 'hours' ? 'selected' : '' %>>horas</option>
+      <option value="days" <%= delayUnit === 'days' ? 'selected' : '' %>>dias</option>
+    </select>
+    <span class="muted small">0 = imediato</span>
+  </div>
+
+  <h3>4. Então</h3>
+  <label>Ação
+    <select name="action" data-action-select>
+      <% Object.entries(ACTIONS).forEach(([k, v]) => { %><option value="<%= k %>" <%= t.action === k ? 'selected' : '' %>><%= v %></option><% }) %>
+    </select>
+  </label>
+  <div data-show-action="whatsapp email" class="stack">
+    <label>Enviar para
+      <select name="to" data-to-select>
+        <option value="student" <%= a.to !== 'custom' ? 'selected' : '' %>>O próprio aluno</option>
+        <option value="custom" <%= a.to === 'custom' ? 'selected' : '' %>>Outro número/e-mail (ex.: gestor, vendedor)</option>
+      </select>
+    </label>
+    <input name="to_value" value="<%= a.to_value || '' %>" placeholder="Número com DDD ou e-mail" data-to-value>
+  </div>
+  <label data-show-action="email">Assunto <input name="subject" value="<%= a.subject || '' %>"></label>
+  <label data-show-action="notify_admin">Título da notificação <input name="notify_title" value="<%= a.title || '' %>" placeholder="{{nome}} concluiu {{curso}}"></label>
+  <label data-show-action="whatsapp email notify_admin">Mensagem <textarea name="message" rows="5"><%= a.message || '' %></textarea></label>
+  <label data-show-action="webhook">URL do webhook (recebe POST JSON) <input name="url" value="<%= a.url || '' %>" placeholder="https://seu-n8n.com/webhook/..."></label>
+  <label data-show-action="enroll">Matricular no curso
+    <select name="target_course_id"><% courses.forEach(co => { %><option value="<%= co.id %>" <%= a.course_id === co.id ? 'selected' : '' %>><%= co.title %></option><% }) %></select>
+  </label>
+  <button class="btn">Salvar gatilho</button>
+</form>
+
+<div>
+  <div class="card">
+    <h3>Variáveis para a mensagem</h3>
+    <p class="small">Clique para inserir:</p>
+    <p><% VARIABLES.forEach(v => { %><button type="button" class="chip" data-insert-var="{{<%= v %>}}">{{<%= v %>}}</button> <% }) %></p>
+    <p class="small muted">{{dias}} = dias até concluir (ou os dias configurados nos gatilhos por tempo). {{nota}} = nota da prova. {{link_certificado}} só existe após a conclusão.</p>
+  </div>
+  <div class="card small">
+    <h3>Exemplos</h3>
+    <ul>
+      <li><strong>Concluiu em até 7 dias</strong> → WhatsApp de parabéns + certificado.</li>
+      <li><strong>Não concluiu em 15 dias</strong> → WhatsApp lembrete com {{progresso}} e {{link_curso}}.</li>
+      <li><strong>Sem acessar há 5 dias</strong> → WhatsApp para o gestor da empresa.</li>
+      <li><strong>Reprovado e esgotou tentativas</strong> → notificar admin.</li>
+      <li><strong>Concluiu curso A</strong> → matricular no curso B (trilha).</li>
+      <li><strong>Qualquer evento</strong> → webhook para n8n/CRM.</li>
+    </ul>
+  </div>
+  <% if (t.id && typeof students !== 'undefined') { %>
+  <form method="post" action="/admin/gatilhos/<%= t.id %>/testar" class="card stack">
+    <%- include('../partials/csrf') %>
+    <h3>Testar agora</h3>
+    <p class="small muted">Executa a ação imediatamente com os dados do aluno escolhido (envio real!).</p>
+    <select name="user_id"><% students.forEach(s => { %><option value="<%= s.id %>"><%= s.name %></option><% }) %></select>
+    <button class="btn secondary" data-confirm="Executar a ação de verdade para este aluno?">Executar teste</button>
+  </form>
+  <form method="post" action="/admin/gatilhos/<%= t.id %>/excluir"><%- include('../partials/csrf') %><button class="btn danger small" data-confirm="Excluir gatilho e histórico de execuções?">Excluir gatilho</button></form>
+  <% } %>
+</div>
+</div>
+<%- include('../partials/footer') %>

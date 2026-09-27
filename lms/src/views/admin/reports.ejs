@@ -1,0 +1,15 @@
+<%- include('../partials/header') %>
+<h1>Relatórios</h1>
+<table class="table card">
+  <tr><th>Curso</th><th>Matriculados</th><th>Iniciaram</th><th>Concluíram</th><th>Taxa de conclusão</th><th>Média de dias p/ concluir</th><th>Nota média</th><th></th></tr>
+  <% courses.forEach(c => { %>
+  <tr>
+    <td><strong><%= c.title %></strong><%= c.published ? '' : ' (rascunho)' %></td>
+    <td><%= c.enrolled %></td><td><%= c.started %></td><td><%= c.completed %></td>
+    <td><%= c.enrolled ? Math.round(c.completed / c.enrolled * 100) : 0 %>%</td>
+    <td><%= c.avg_days ?? '—' %></td><td><%= c.avg_score != null ? c.avg_score + '%' : '—' %></td>
+    <td><a href="/admin/relatorios/curso/<%= c.id %>">detalhar</a></td>
+  </tr>
+  <% }) %>
+</table>
+<%- include('../partials/footer') %>

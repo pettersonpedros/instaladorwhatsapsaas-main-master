@@ -1,0 +1,42 @@
+<%- include('../partials/header') %>
+<div class="card narrow">
+  <p class="muted small"><a href="/curso/<%= state.course.id %>"><%= state.course.title %></a><% if (module) { %> › <%= module.title %><% } %></p>
+  <h1>📝 <%= quiz.title %></h1>
+  <% if (quiz.description) { %><p class="pre"><%= quiz.description %></p><% } %>
+  <ul class="facts">
+    <li><strong><%= questionCount %></strong> questões</li>
+    <li>Nota mínima: <strong><%= quiz.pass_score %>%</strong></li>
+    <li>Tentativas: <strong><%= quiz.max_attempts ? `${qs.used} de ${quiz.max_attempts}` : `${qs.used} (ilimitadas)` %></strong></li>
+    <li>Tempo: <strong><%= quiz.time_limit_minutes ? quiz.time_limit_minutes + ' min' : 'sem limite' %></strong></li>
+  </ul>
+  <% if (unlocks.length) { %><div class="alert info small">Ser aprovado nesta prova libera: <%= unlocks.map(u => u.title).join(', ') %>.</div><% } %>
+
+  <% if (qs.passed) { %>
+    <div class="alert success">✅ Você foi aprovado com <%= qs.best %>%.</div>
+  <% } else if (!qs.available) { %>
+    <div class="alert warn">🔒 Conclua todas as aulas <%= module ? 'do módulo' : 'do curso' %> para liberar a prova.</div>
+  <% } else if (!qs.canAttempt) { %>
+    <div class="alert error">Você usou todas as tentativas. Fale com o suporte para liberar uma nova tentativa.</div>
+  <% } else if (preview) { %>
+    <div class="alert info">A equipe não realiza provas. Use um usuário aluno para testar.</div>
+  <% } else { %>
+    <form method="post" action="/prova/<%= quiz.id %>/iniciar">
+      <%- include('../partials/csrf') %>
+      <button class="btn big"><%= qs.openAttemptId ? 'Continuar tentativa' : 'Iniciar prova' %></button>
+      <% if (quiz.time_limit_minutes) { %><p class="small muted">O cronômetro começa ao clicar. Ao zerar, a prova é enviada automaticamente.</p><% } %>
+    </form>
+  <% } %>
+
+  <% if (attempts.length) { %>
+  <h3>Suas tentativas</h3>
+  <table class="table">
+    <tr><th>#</th><th>Data</th><th>Nota</th><th>Resultado</th><th></th></tr>
+    <% attempts.forEach((a, i) => { %>
+      <tr><td><%= attempts.length - i %></td><td><%= util.formatDate(a.finished_at) %></td><td><%= a.score %>%</td>
+        <td><%= a.status === 'expired' ? '⏰ Tempo esgotado' : a.passed ? '✅ Aprovado' : '❌ Reprovado' %></td>
+        <td><a href="/prova/<%= quiz.id %>/resultado/<%= a.id %>">ver</a></td></tr>
+    <% }) %>
+  </table>
+  <% } %>
+</div>
+<%- include('../partials/footer') %>

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title ? title + ' · ' : '' %><%= site.site_name %></title>
+  <meta name="csrf-token" content="<%= csrf %>">
+  <link rel="stylesheet" href="/static/app.css">
+  <style>:root { --primary: <%= site.primary_color %>; }</style>
+</head>
+<% const inAdmin = path.startsWith('/admin'); %>
+<body class="<%= inAdmin ? 'admin' : 'student' %>">
+<header class="topbar">
+  <a class="brand" href="<%= user && isStaff(user) && inAdmin ? '/admin' : '/' %>">
+    <% if (site.logo_url) { %><img src="<%= site.logo_url %>" alt=""><% } %>
+    <span><%= site.site_name %></span>
+  </a>
+  <% if (user) { %>
+  <nav class="topnav">
+    <% if (isStaff(user)) { %>
+      <% if (inAdmin) { %><a href="/">Ver como aluno</a><% } else { %><a href="/admin">Painel admin</a><% } %>
+    <% } else { %>
+      <a href="/" class="<%= path === '/' ? 'active' : '' %>">Meus cursos</a>
+      <a href="/certificados" class="<%= path === '/certificados' ? 'active' : '' %>">Certificados</a>
+    <% } %>
+    <a href="/perfil"><%= user.name.split(' ')[0] %></a>
+    <form method="post" action="/logout" class="inline"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="linklike">Sair</button></form>
+  </nav>
+  <% } %>
+</header>
+<div class="layout">
+<% if (user && inAdmin) { %>
+  <aside class="sidebar">
+    <a href="/admin" class="<%= path === '/admin' || path === '/admin/' ? 'active' : '' %>">📊 Painel<% if (typeof unreadNotifications !== 'undefined' && unreadNotifications) { %> <span class="badge"><%= unreadNotifications %></span><% } %></a>
+    <a href="/admin/cursos" class="<%= /^\/admin\/(cursos|aulas|provas)/.test(path) ? 'active' : '' %>">🎓 Cursos</a>
+    <a href="/admin/usuarios" class="<%= path.startsWith('/admin/usuarios') ? 'active' : '' %>">👤 Usuários</a>
+    <a href="/admin/empresas" class="<%= path.startsWith('/admin/empresas') ? 'active' : '' %>">🏢 Empresas</a>
+    <a href="/admin/relatorios" class="<%= path.startsWith('/admin/relatorios') ? 'active' : '' %>">📈 Relatórios</a>
+    <a href="/admin/gatilhos" class="<%= path.startsWith('/admin/gatilhos') ? 'active' : '' %>">⚡ Gatilhos</a>
+    <% if (user.role === 'admin') { %><a href="/admin/configuracoes" class="<%= path.startsWith('/admin/configuracoes') ? 'active' : '' %>">⚙️ Configurações</a><% } %>
+  </aside>
+<% } %>
+<main class="content">
+<% if (flash) { %><div class="alert <%= flash.type %>"><%= flash.message %></div><% } %>

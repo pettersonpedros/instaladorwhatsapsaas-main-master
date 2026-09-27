@@ -1,0 +1,36 @@
+<%- include('../partials/header') %>
+<h1>Empresas / Clientes</h1>
+<p class="muted">Agrupe os alunos por cliente para matricular em lote e filtrar relatórios.</p>
+<% if (can(user, 'students')) { %>
+<form method="post" action="/admin/empresas" class="card inline-form">
+  <%- include('../partials/csrf') %>
+  <input name="name" placeholder="Nome da empresa" required>
+  <input name="notes" placeholder="Observações">
+  <button class="btn">+ Adicionar</button>
+</form>
+<% } %>
+<table class="table card">
+  <tr><th>Empresa</th><th>Alunos</th><th>Matrículas</th><th>Concluídas</th><th>Ações</th></tr>
+  <% companies.forEach(c => { %>
+  <tr>
+    <td><strong><%= c.name %></strong><br><span class="small muted"><%= c.notes %></span></td>
+    <td><a href="/admin/usuarios?empresa=<%= c.id %>"><%= c.students %></a></td><td><%= c.enrollments %></td><td><%= c.completed %></td>
+    <td>
+      <% if (can(user, 'students')) { %>
+      <form method="post" action="/admin/empresas/<%= c.id %>/matricular" class="inline-form">
+        <%- include('../partials/csrf') %>
+        <select name="course_id"><% courses.forEach(co => { %><option value="<%= co.id %>"><%= co.title %></option><% }) %></select>
+        <button class="btn small">Matricular todos</button>
+      </form>
+      <details><summary class="small">editar</summary>
+        <form method="post" action="/admin/empresas/<%= c.id %>" class="inline-form"><%- include('../partials/csrf') %>
+          <input name="name" value="<%= c.name %>"><input name="notes" value="<%= c.notes || '' %>"><button class="btn small secondary">Salvar</button></form>
+        <form method="post" action="/admin/empresas/<%= c.id %>/excluir"><%- include('../partials/csrf') %><button class="linklike danger" data-confirm="Excluir empresa? Os usuários serão mantidos.">excluir</button></form>
+      </details>
+      <% } %>
+    </td>
+  </tr>
+  <% }) %>
+  <% if (!companies.length) { %><tr><td colspan="5" class="muted">Nenhuma empresa.</td></tr><% } %>
+</table>
+<%- include('../partials/footer') %>

@@ -1,0 +1,32 @@
+<%- include('../partials/header') %>
+<div class="card narrow">
+  <p class="muted small"><a href="/curso/<%= state.course.id %>"><%= state.course.title %></a> › <a href="/prova/<%= quiz.id %>"><%= quiz.title %></a></p>
+  <div class="result <%= attempt.passed ? 'pass' : 'fail' %>">
+    <div class="big-number"><%= attempt.score %>%</div>
+    <h2><%= attempt.status === 'expired' ? '⏰ Tempo esgotado' : attempt.passed ? '✅ Aprovado!' : '❌ Não foi dessa vez' %></h2>
+    <p>Nota mínima: <%= quiz.pass_score %>%</p>
+  </div>
+  <% if (unlocked.length) { %><div class="alert success">🔓 Liberado: <%= unlocked.map(m => m.title).join(', ') %></div><% } %>
+  <% if (state.enrollment && state.enrollment.completed_at && attempt.passed) { %><div class="alert success">🎉 Você concluiu o curso!</div><% } %>
+  <p>
+    <% if (!attempt.passed && qs.canAttempt) { %>
+      <form method="post" action="/prova/<%= quiz.id %>/iniciar" class="inline"><%- include('../partials/csrf') %><button class="btn">Tentar novamente<%= Number.isFinite(qs.attemptsLeft) ? ` (${qs.attemptsLeft} restante${qs.attemptsLeft === 1 ? '' : 's'})` : '' %></button></form>
+    <% } %>
+    <a class="btn secondary" href="/curso/<%= state.course.id %>">Voltar ao curso</a>
+  </p>
+  <% if (quiz.show_answers && attempt.status === 'finished') { %>
+    <h3>Gabarito</h3>
+    <% questions.forEach((q, i) => { const d = attempt.answers[q.id] || { selected: [], correct: false }; %>
+      <div class="question review <%= d.correct ? 'ok' : 'bad' %>">
+        <p><strong><%= i + 1 %>.</strong> <span class="pre"><%= q.text %></span> <%= d.correct ? '✅' : '❌' %></p>
+        <ul>
+          <% q.options.forEach(o => { const sel = d.selected.includes(o.id); %>
+            <li class="<%= o.is_correct ? 'correct' : sel ? 'wrong' : '' %>"><%= sel ? '●' : '○' %> <%= o.text %><%= o.is_correct ? ' ✔' : '' %></li>
+          <% }) %>
+        </ul>
+        <% if (q.explanation) { %><p class="small muted pre">💡 <%= q.explanation %></p><% } %>
+      </div>
+    <% }) %>
+  <% } %>
+</div>
+<%- include('../partials/footer') %>

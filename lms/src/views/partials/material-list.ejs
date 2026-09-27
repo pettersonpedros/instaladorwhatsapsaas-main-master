@@ -1,0 +1,11 @@
+<% if (items.length) { %>
+<ul class="materials">
+  <% items.forEach(m => { %>
+  <li><%= m.kind === 'file' ? '📄' : '🔗' %> <a href="/material/<%= m.id %>" target="_blank"><%= m.title %></a>
+    <% if (can(user, 'content')) { %>
+    <form method="post" action="/admin/materiais/<%= m.id %>/excluir" class="inline"><%- include('csrf') %><input type="hidden" name="back" value="<%= back %>"><button class="linklike danger" data-confirm="Remover material?">remover</button></form>
+    <% } %>
+  </li>
+  <% }) %>
+</ul>
+<% } %>

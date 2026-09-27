@@ -1,0 +1,67 @@
+<%- include('../partials/header') %>
+<div class="lesson-layout">
+  <div class="lesson-main">
+    <p class="muted small"><a href="/curso/<%= state.course.id %>"><%= state.course.title %></a> › <%= module.title %></p>
+    <h1><%= lesson.title %></h1>
+    <% if (preview) { %><div class="alert info small">Pré-visualização: o progresso não é registrado.</div><% } %>
+    <% if (lesson.youtube_id) { %>
+      <div class="player-wrap">
+        <div id="player"
+          data-video="<%= lesson.youtube_id %>"
+          data-lesson="<%= lesson.id %>"
+          data-start="<%= lesson.completed ? 0 : lesson.lastPosition %>"
+          data-prevent-skip="<%= state.course.prevent_skip && !lesson.completed && !preview ? '1' : '0' %>"
+          data-max-watched="<%= maxWatched %>"
+          data-threshold="<%= threshold %>"
+          data-completed="<%= lesson.completed ? '1' : '0' %>"
+          data-next="<%= nextLesson ? '/aula/' + nextLesson.id : '/curso/' + state.course.id %>"></div>
+      </div>
+      <div class="watch-status">
+        <div class="progress"><div id="watch-bar" style="width: <%= lesson.completed ? 100 : lesson.percent %>%"></div></div>
+        <span id="watch-text"><%= lesson.completed ? 'Aula concluída ✅' : `Assistido: ${lesson.percent}% (mínimo ${threshold}% para concluir)` %></span>
+      </div>
+      <% if (state.course.prevent_skip && !lesson.completed) { %><p class="small muted">Neste curso não é possível avançar o vídeo além do ponto já assistido.</p><% } %>
+    <% } %>
+    <% if (lesson.description) { %><div class="card pre"><%= lesson.description %></div><% } %>
+    <% if (!lesson.youtube_id && !lesson.completed) { %>
+      <form method="post" action="/aula/<%= lesson.id %>/concluir">
+        <%- include('../partials/csrf') %>
+        <button class="btn">Marcar como concluída</button>
+      </form>
+    <% } %>
+    <% if (materials.length) { %>
+      <div class="card">
+        <h3>📎 Materiais complementares</h3>
+        <ul class="materials"><% materials.forEach(m => { %><li><a href="/material/<%= m.id %>" target="_blank"><%= m.kind === 'file' ? '📄' : '🔗' %> <%= m.title %></a><% if (m.file_size) { %> <span class="muted small">(<%= (m.file_size / 1048576).toFixed(1) %> MB)</span><% } %></li><% }) %></ul>
+      </div>
+    <% } %>
+    <div class="lesson-nav">
+      <% if (prevLesson) { %><a class="btn secondary" href="/aula/<%= prevLesson.id %>">← <%= prevLesson.title %></a><% } else { %><span></span><% } %>
+      <% if (nextLesson) { %>
+        <a id="next-btn" class="btn <%= nextLesson.available || lesson.completed ? '' : 'disabled' %>" href="/aula/<%= nextLesson.id %>"><%= nextLesson.title %> →</a>
+      <% } else { %>
+        <a class="btn" href="/curso/<%= state.course.id %>">Voltar ao curso</a>
+      <% } %>
+    </div>
+    <div id="course-done" class="alert success hidden">🎉 Parabéns! Você concluiu o curso. <a href="/curso/<%= state.course.id %>">Ver certificado</a></div>
+  </div>
+  <aside class="lesson-side card">
+    <h3><%= module.title %></h3>
+    <ul class="items compact">
+      <% module.lessons.forEach(l => { %>
+        <li class="<%= l.id === lesson.id ? 'current' : '' %> <%= l.completed ? 'done' : '' %> <%= l.available ? '' : 'disabled' %>">
+          <span class="icon"><%= l.completed ? '✅' : l.available ? '▶️' : '🔒' %></span>
+          <% if (l.available) { %><a href="/aula/<%= l.id %>"><%= l.title %></a><% } else { %><span><%= l.title %></span><% } %>
+        </li>
+      <% }) %>
+      <% moduleQuizzes.forEach(q => { %>
+        <li class="<%= q.passed ? 'done' : '' %> <%= q.available ? '' : 'disabled' %>">
+          <span class="icon"><%= q.passed ? '✅' : q.available ? '📝' : '🔒' %></span>
+          <% if (q.available) { %><a href="/prova/<%= q.id %>">Prova: <%= q.title %></a><% } else { %><span>Prova: <%= q.title %></span><% } %>
+        </li>
+      <% }) %>
+    </ul>
+  </aside>
+</div>
+<script src="/static/player.js"></script>
+<%- include('../partials/footer') %>

@@ -1,0 +1,88 @@
+<%- include('../partials/header') %>
+<% const editable = can(user, 'content'); %>
+<p class="muted small"><a href="/admin/cursos/<%= quiz.course_id %>"><%= quiz.course_title %></a> › <%= quiz.module_title || 'Avaliação final' %></p>
+<h1>📝 <%= quiz.title %></h1>
+<% if (unlocks.length) { %><div class="alert info small">Aprovação nesta prova libera: <%= unlocks.map(u => u.title).join(', ') %></div><% } %>
+
+<div class="grid two">
+<form method="post" action="/admin/provas/<%= quiz.id %>" class="card stack">
+  <%- include('../partials/csrf') %>
+  <h3>Configurações</h3>
+  <label>Título <input name="title" value="<%= quiz.title %>" required></label>
+  <label>Instruções <textarea name="description" rows="2"><%= quiz.description %></textarea></label>
+  <label>Pertence a
+    <select name="module_id">
+      <option value="">Avaliação final (após todas as aulas)</option>
+      <% modules.forEach(m => { %><option value="<%= m.id %>" <%= m.id === quiz.module_id ? 'selected' : '' %>>Módulo: <%= m.title %></option><% }) %>
+    </select>
+  </label>
+  <div class="grid three">
+    <label>Nota mínima (%) <input type="number" name="pass_score" min="0" max="100" value="<%= quiz.pass_score %>"></label>
+    <label>Máx. tentativas <input type="number" name="max_attempts" min="0" value="<%= quiz.max_attempts %>"><span class="small muted">0 = ilimitado</span></label>
+    <label>Tempo (min) <input type="number" name="time_limit_minutes" min="0" value="<%= quiz.time_limit_minutes %>"><span class="small muted">0 = sem limite</span></label>
+  </div>
+  <label class="check"><input type="checkbox" name="required" <%= quiz.required ? 'checked' : '' %>> Obrigatória para concluir o módulo/curso</label>
+  <label class="check"><input type="checkbox" name="shuffle" <%= quiz.shuffle ? 'checked' : '' %>> Embaralhar questões e alternativas</label>
+  <label class="check"><input type="checkbox" name="show_answers" <%= quiz.show_answers ? 'checked' : '' %>> Mostrar gabarito após enviar</label>
+  <p class="small muted">Para que esta prova <strong>libere um módulo</strong>, edite o módulo seguinte no curso e escolha esta prova em "Liberar somente após aprovação na prova".</p>
+  <% if (editable) { %><button class="btn">Salvar</button><% } %>
+</form>
+
+<% if (editable) { %>
+<form method="post" action="<%= editing ? '/admin/questoes/' + editing.id : '/admin/provas/' + quiz.id + '/questoes' %>" class="card stack" id="nova-questao">
+  <%- include('../partials/csrf') %>
+  <h3><%= editing ? 'Editar questão' : 'Nova questão' %></h3>
+  <% const kind = editing ? editing.kind : 'single'; %>
+  <label>Tipo
+    <select name="kind" data-kind-select>
+      <option value="single" <%= kind === 'single' ? 'selected' : '' %>>Escolha única</option>
+      <option value="multiple" <%= kind === 'multiple' ? 'selected' : '' %>>Múltipla escolha (várias corretas)</option>
+      <option value="truefalse" <%= kind === 'truefalse' ? 'selected' : '' %>>Verdadeiro ou falso</option>
+    </select>
+  </label>
+  <label>Enunciado <textarea name="text" rows="3" required><%= editing ? editing.text : '' %></textarea></label>
+  <div data-kind="single multiple">
+    <p class="small muted">Alternativas — marque a(s) correta(s). Deixe em branco as que não usar.</p>
+    <% for (let i = 0; i < 6; i++) { const o = editing && editing.kind !== 'truefalse' ? editing.options[i] : null; %>
+      <div class="option-row">
+        <input type="checkbox" name="option_correct" value="<%= i %>" <%= o && o.is_correct ? 'checked' : '' %> title="Correta">
+        <input name="option_text" value="<%= o ? o.text : '' %>" placeholder="Alternativa <%= String.fromCharCode(65 + i) %>">
+      </div>
+    <% } %>
+  </div>
+  <div data-kind="truefalse">
+    <% const tfTrue = !editing || editing.kind !== 'truefalse' || editing.options.find(o => o.text === 'Verdadeiro')?.is_correct; %>
+    <label class="check"><input type="radio" name="tf_correct" value="true" <%= tfTrue ? 'checked' : '' %>> Resposta correta: Verdadeiro</label>
+    <label class="check"><input type="radio" name="tf_correct" value="false" <%= tfTrue ? '' : 'checked' %>> Resposta correta: Falso</label>
+  </div>
+  <div class="grid two">
+    <label>Pontos <input type="number" name="points" min="1" value="<%= editing ? editing.points : 1 %>"></label>
+  </div>
+  <label>Explicação (aparece no gabarito) <textarea name="explanation" rows="2"><%= editing ? editing.explanation : '' %></textarea></label>
+  <button class="btn"><%= editing ? 'Salvar questão' : '+ Adicionar questão' %></button>
+  <% if (editing) { %><a href="/admin/provas/<%= quiz.id %>">cancelar edição</a><% } %>
+</form>
+<% } %>
+</div>
+
+<h2>Questões (<%= questions.length %>)</h2>
+<% questions.forEach((q, i) => { %>
+  <div class="card question-admin" id="questao-<%= q.id %>">
+    <div class="row-between">
+      <p><strong><%= i + 1 %>.</strong> <span class="pre"><%= q.text %></span> <span class="tag"><%= { single: 'única', multiple: 'múltipla', truefalse: 'V/F' }[q.kind] %></span> <span class="muted small"><%= q.points %> pt</span></p>
+      <% if (editable) { %>
+      <div class="actions">
+        <form method="post" action="/admin/questoes/<%= q.id %>/mover" class="inline"><%- include('../partials/csrf') %><input type="hidden" name="dir" value="up"><button class="icon-btn">↑</button></form>
+        <form method="post" action="/admin/questoes/<%= q.id %>/mover" class="inline"><%- include('../partials/csrf') %><input type="hidden" name="dir" value="down"><button class="icon-btn">↓</button></form>
+        <a class="icon-btn" href="/admin/provas/<%= quiz.id %>?editar=<%= q.id %>#nova-questao">✏️</a>
+        <form method="post" action="/admin/questoes/<%= q.id %>/excluir" class="inline"><%- include('../partials/csrf') %><button class="icon-btn danger" data-confirm="Excluir questão?">🗑</button></form>
+      </div>
+      <% } %>
+    </div>
+    <ul><% q.options.forEach(o => { %><li class="<%= o.is_correct ? 'correct' : '' %>"><%= o.is_correct ? '✔' : '○' %> <%= o.text %></li><% }) %></ul>
+  </div>
+<% }) %>
+<% if (editable) { %>
+<form method="post" action="/admin/provas/<%= quiz.id %>/excluir"><%- include('../partials/csrf') %><button class="btn danger small" data-confirm="Excluir a prova e todas as tentativas dos alunos?">Excluir prova</button></form>
+<% } %>
+<%- include('../partials/footer') %>

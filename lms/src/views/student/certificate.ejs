@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Certificado · <%= cert.user_name %></title>
+  <link rel="stylesheet" href="/static/app.css">
+  <style>:root { --primary: <%= site.primary_color %>; }</style>
+</head>
+<body class="cert-page">
+  <div class="no-print cert-actions"><button class="btn" data-print>Imprimir / Salvar PDF</button></div>
+  <div class="certificate">
+    <% if (site.logo_url) { %><img class="cert-logo" src="<%= site.logo_url %>" alt=""><% } %>
+    <p class="cert-kicker">CERTIFICADO DE CONCLUSÃO</p>
+    <p>Certificamos que</p>
+    <h1><%= cert.user_name %></h1>
+    <p>concluiu com êxito o treinamento</p>
+    <h2><%= cert.course_title %></h2>
+    <% if (cert.workload_hours) { %><p>com carga horária de <strong><%= cert.workload_hours %> hora(s)</strong></p><% } %>
+    <p>em <%= util.formatDate(cert.issued_at, false) %>.</p>
+    <div class="cert-footer">
+      <div><strong><%= site.site_name %></strong></div>
+      <div class="small">Código de verificação: <strong><%= cert.code %></strong><br><%= String(site.public_url).replace(/\/$/, '') %>/certificado/<%= cert.code %></div>
+    </div>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

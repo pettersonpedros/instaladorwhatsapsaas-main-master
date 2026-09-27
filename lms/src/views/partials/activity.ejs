@@ -1,0 +1,22 @@
+<%
+const labels = {
+  login: () => 'Entrou na plataforma',
+  enrolled: a => `Matriculado em "${a.course_title}"`,
+  lesson_viewed: a => `Abriu a aula "${a.lesson_title}"`,
+  lesson_started: a => `Começou a assistir "${a.lesson_title}"`,
+  lesson_completed: a => `Concluiu a aula "${a.lesson_title}"`,
+  module_completed: a => `Concluiu o módulo "${a.module_title}"`,
+  course_completed: a => `🎉 Concluiu o curso "${a.course_title}"`,
+  quiz_passed: a => `✅ Aprovado na prova "${a.quiz_title}" (${a.data.score}%)`,
+  quiz_failed: a => `❌ Reprovado na prova "${a.quiz_title}" (${a.data.score}%${a.data.expired ? ', tempo esgotado' : ''})`,
+  material_opened: a => `Abriu material em "${a.course_title}"`,
+};
+%>
+<ul class="timeline">
+<% items.forEach(a => { %>
+  <li><span class="muted small"><%= util.formatDate(a.created_at) %></span>
+    <% if (a.user_name) { %><a href="/admin/usuarios/<%= a.user_id %>"><strong><%= a.user_name %></strong></a> — <% } %>
+    <%= (labels[a.type] || (() => a.type))(a) %></li>
+<% }) %>
+<% if (!items.length) { %><li class="muted">Nenhuma atividade ainda.</li><% } %>
+</ul>

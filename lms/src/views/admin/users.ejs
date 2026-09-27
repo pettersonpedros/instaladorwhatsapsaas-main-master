@@ -1,0 +1,60 @@
+<%- include('../partials/header') %>
+<% const roleLabel = { admin: 'Admin', staff: 'Funcionário', student: 'Aluno' }; %>
+<h1>Usuários</h1>
+<form class="card filters" method="get">
+  <input name="q" value="<%= q %>" placeholder="Buscar por nome, e-mail ou telefone">
+  <select name="role"><option value="">Todos os perfis</option><% Object.entries(roleLabel).forEach(([k, v]) => { %><option value="<%= k %>" <%= role === k ? 'selected' : '' %>><%= v %></option><% }) %></select>
+  <select name="empresa"><option value="">Todas as empresas</option><% companies.forEach(c => { %><option value="<%= c.id %>" <%= company === c.id ? 'selected' : '' %>><%= c.name %></option><% }) %></select>
+  <button class="btn secondary">Filtrar</button>
+</form>
+
+<% if (can(user, 'students')) { %>
+<div class="grid two">
+<details class="card">
+  <summary><strong>+ Novo usuário</strong></summary>
+  <form method="post" action="/admin/usuarios" class="stack">
+    <%- include('../partials/csrf') %>
+    <label>Nome <input name="name" required></label>
+    <label>E-mail <input type="email" name="email" required></label>
+    <label>WhatsApp (com DDD) <input name="phone" placeholder="11999998888"></label>
+    <label>Empresa <select name="company_id"><option value="">—</option><% companies.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select></label>
+    <% if (user.role === 'admin') { %>
+    <label>Perfil <select name="role" data-role-select><option value="student">Aluno</option><option value="staff">Funcionário (equipe)</option><option value="admin">Administrador</option></select></label>
+    <fieldset data-perms class="perms"><legend class="small">Permissões do funcionário (relatórios sempre liberados)</legend>
+      <% Object.entries(perms).forEach(([k, v]) => { %><label class="check"><input type="checkbox" name="perm_<%= k %>"> <%= v %></label><% }) %>
+    </fieldset>
+    <% } %>
+    <label>Senha <input name="password" placeholder="vazio = gerar automaticamente"></label>
+    <fieldset><legend class="small">Matricular em</legend>
+      <% courses.forEach(c => { %><label class="check"><input type="checkbox" name="courses" value="<%= c.id %>"> <%= c.title %></label><% }) %>
+    </fieldset>
+    <label class="check"><input type="checkbox" name="send_access"> Enviar dados de acesso por WhatsApp/e-mail</label>
+    <button class="btn">Criar usuário</button>
+  </form>
+</details>
+<details class="card">
+  <summary><strong>⬆ Importar alunos (CSV)</strong></summary>
+  <form method="post" action="/admin/usuarios/importar?_csrf=<%= csrf %>" enctype="multipart/form-data" class="stack">
+    <p class="small muted">Colunas: <code>nome;email;telefone;empresa</code> (cabeçalho opcional, separador ; ou ,). Empresas inexistentes são criadas. E-mails já cadastrados não são duplicados.</p>
+    <input type="file" name="file" accept=".csv,text/csv" required>
+    <label>Matricular todos em <select name="course_id"><option value="">— não matricular —</option><% courses.forEach(c => { %><option value="<%= c.id %>"><%= c.title %></option><% }) %></select></label>
+    <label class="check"><input type="checkbox" name="send_access"> Enviar acesso (senha gerada) por WhatsApp/e-mail aos novos</label>
+    <button class="btn">Importar</button>
+  </form>
+</details>
+</div>
+<% } %>
+
+<table class="table card">
+  <tr><th>Nome</th><th>E-mail</th><th>Empresa</th><th>Perfil</th><th>Cursos</th><th>Último acesso</th></tr>
+  <% users.forEach(u => { %>
+  <tr class="<%= u.active ? '' : 'inactive' %>">
+    <td><a href="/admin/usuarios/<%= u.id %>"><strong><%= u.name %></strong></a><%= u.active ? '' : ' (inativo)' %></td>
+    <td><%= u.email %></td><td><%= u.company_name || '—' %></td><td><%= roleLabel[u.role] %></td>
+    <td><%= u.completed %>/<%= u.enrollments %> concluídos</td>
+    <td><%= util.formatDate(u.last_activity_at) %></td>
+  </tr>
+  <% }) %>
+  <% if (!users.length) { %><tr><td colspan="6" class="muted">Nenhum usuário encontrado.</td></tr><% } %>
+</table>
+<%- include('../partials/footer') %>

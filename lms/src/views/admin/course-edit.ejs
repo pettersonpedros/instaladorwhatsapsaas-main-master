@@ -1,0 +1,148 @@
+<%- include('../partials/header') %>
+<% const editable = can(user, 'content'); const back = '/admin/cursos/' + course.id; %>
+<p class="muted small"><a href="/admin/cursos">Cursos</a> ›</p>
+<div class="row-between">
+  <h1><%= course.title %> <span class="tag <%= course.published ? 'success' : '' %>"><%= course.published ? 'Publicado' : 'Rascunho' %></span></h1>
+  <div><a class="btn secondary" href="/curso/<%= course.id %>">Pré-visualizar</a> <a class="btn secondary" href="/admin/relatorios/curso/<%= course.id %>">Relatório</a></div>
+</div>
+
+<details class="card" <%= modules.length ? '' : 'open' %>>
+  <summary><strong>⚙️ Configurações do curso</strong></summary>
+  <form method="post" action="/admin/cursos/<%= course.id %>" class="stack">
+    <%- include('../partials/csrf') %>
+    <label>Título <input name="title" value="<%= course.title %>" required></label>
+    <label>Descrição <textarea name="description" rows="3"><%= course.description %></textarea></label>
+    <label>URL da imagem de capa <input name="cover_url" value="<%= course.cover_url || '' %>" placeholder="https://..."></label>
+    <div class="grid two">
+      <label>% mínimo do vídeo para concluir a aula <input type="number" name="min_watch_percent" min="1" max="100" value="<%= course.min_watch_percent %>"></label>
+      <label>Carga horária (certificado) <input type="number" name="workload_hours" min="0" value="<%= course.workload_hours || '' %>"></label>
+    </div>
+    <label class="check"><input type="checkbox" name="published" <%= course.published ? 'checked' : '' %>> Publicado (visível para alunos matriculados)</label>
+    <label class="check"><input type="checkbox" name="sequential_lessons" <%= course.sequential_lessons ? 'checked' : '' %>> Aulas em sequência (precisa concluir a anterior para abrir a próxima)</label>
+    <label class="check"><input type="checkbox" name="prevent_skip" <%= course.prevent_skip ? 'checked' : '' %>> Bloquear avançar o vídeo (não deixa pular para frente do que já assistiu)</label>
+    <label class="check"><input type="checkbox" name="certificate_enabled" <%= course.certificate_enabled ? 'checked' : '' %>> Emitir certificado ao concluir</label>
+    <% if (editable) { %><button class="btn">Salvar curso</button><% } %>
+  </form>
+  <% if (editable) { %>
+  <div class="row-between danger-zone">
+    <form method="post" action="/admin/cursos/<%= course.id %>/duplicar"><%- include('../partials/csrf') %><button class="btn secondary small">Duplicar curso</button></form>
+    <form method="post" action="/admin/cursos/<%= course.id %>/excluir"><%- include('../partials/csrf') %><button class="btn danger small" data-confirm="Excluir o curso, todas as aulas, provas e o progresso dos alunos? Não há como desfazer.">Excluir curso</button></form>
+  </div>
+  <% } %>
+</details>
+
+<div class="card">
+  <h3>📎 Materiais gerais do curso</h3>
+  <%- include('../partials/material-list', { items: courseMaterials, back }) %>
+  <% if (editable) { %><%- include('../partials/material-form', { courseId: course.id, moduleId: null, lessonId: null, back }) %><% } %>
+</div>
+
+<% modules.forEach((m, i) => { %>
+<section class="card module" id="modulo-<%= m.id %>">
+  <div class="module-head">
+    <h2><span class="muted">Módulo <%= i + 1 %> ·</span> <%= m.title %></h2>
+    <% if (editable) { %>
+    <div class="actions">
+      <form method="post" action="/admin/modulos/<%= m.id %>/mover" class="inline"><%- include('../partials/csrf') %><input type="hidden" name="dir" value="up"><button class="icon-btn" title="Subir">↑</button></form>
+      <form method="post" action="/admin/modulos/<%= m.id %>/mover" class="inline"><%- include('../partials/csrf') %><input type="hidden" name="dir" value="down"><button class="icon-btn" title="Descer">↓</button></form>
+      <form method="post" action="/admin/modulos/<%= m.id %>/excluir" class="inline"><%- include('../partials/csrf') %><button class="icon-btn danger" title="Excluir" data-confirm="Excluir o módulo e todas as suas aulas?">🗑</button></form>
+    </div>
+    <% } %>
+  </div>
+  <div class="rules small">
+    <strong>Liberação:</strong>
+    <% const rules = []; if (i > 0 && m.require_previous) rules.push('após concluir o módulo anterior');
+       if (m.unlock_quiz_id) { const q = allQuizzes.find(x => x.id === m.unlock_quiz_id); rules.push(`após aprovação na prova "${q ? q.title : '?'}"`); }
+       if (m.release_after_days) rules.push(`${m.release_after_days} dia(s) após a matrícula`); %>
+    <%= rules.length ? rules.join(' + ') : 'livre' %>
+  </div>
+
+  <ul class="items admin-items">
+    <% m.lessons.forEach(l => { %>
+      <li>
+        <span class="icon"><%= l.youtube_id ? '▶️' : '📖' %></span>
+        <a href="/admin/aulas/<%= l.id %>"><%= l.title %></a>
+        <span class="meta"><%= l.duration_seconds ? util.formatDuration(l.duration_seconds) : (l.youtube_id ? 'duração: detectada no 1º play' : 'sem vídeo') %></span>
+        <% if (editable) { %>
+        <span class="actions">
+          <form method="post" action="/admin/aulas/<%= l.id %>/mover" class="inline"><%- include('../partials/csrf') %><input type="hidden" name="dir" value="up"><button class="icon-btn">↑</button></form>
+          <form method="post" action="/admin/aulas/<%= l.id %>/mover" class="inline"><%- include('../partials/csrf') %><input type="hidden" name="dir" value="down"><button class="icon-btn">↓</button></form>
+          <a class="icon-btn" href="/admin/relatorios/aula/<%= l.id %>" title="Quem assistiu">👁</a>
+        </span>
+        <% } %>
+      </li>
+    <% }) %>
+    <% m.quizzes.forEach(q => { %>
+      <li><span class="icon">📝</span><a href="/admin/provas/<%= q.id %>">Prova: <%= q.title %></a>
+        <span class="meta"><%= q.questions %> questões · mín. <%= q.pass_score %>%<%= q.required ? '' : ' · opcional' %></span></li>
+    <% }) %>
+  </ul>
+
+  <% if (editable) { %>
+  <form method="post" action="/admin/modulos/<%= m.id %>/aulas" class="inline-form">
+    <%- include('../partials/csrf') %>
+    <input name="youtube" placeholder="Link do YouTube (ex.: https://youtu.be/...) — deixe vazio p/ aula só de texto">
+    <input name="title" placeholder="Título (vazio = pega do YouTube)">
+    <button class="btn small">+ Aula</button>
+  </form>
+  <form method="post" action="/admin/cursos/<%= course.id %>/provas" class="inline-form">
+    <%- include('../partials/csrf') %>
+    <input type="hidden" name="module_id" value="<%= m.id %>">
+    <input name="title" placeholder="Título da prova do módulo" value="Prova do módulo <%= i + 1 %>">
+    <button class="btn small secondary">+ Prova neste módulo</button>
+  </form>
+  <% } %>
+
+  <h4>Materiais do módulo</h4>
+  <%- include('../partials/material-list', { items: m.materials, back: back + '#modulo-' + m.id }) %>
+  <% if (editable) { %><%- include('../partials/material-form', { courseId: course.id, moduleId: m.id, lessonId: null, back: back + '#modulo-' + m.id }) %><% } %>
+
+  <% if (editable) { %>
+  <details>
+    <summary>Editar módulo e regras de liberação</summary>
+    <form method="post" action="/admin/modulos/<%= m.id %>" class="stack">
+      <%- include('../partials/csrf') %>
+      <label>Título <input name="title" value="<%= m.title %>"></label>
+      <label>Descrição <textarea name="description" rows="2"><%= m.description %></textarea></label>
+      <% if (i > 0) { %><label class="check"><input type="checkbox" name="require_previous" <%= m.require_previous ? 'checked' : '' %>> Exigir conclusão do módulo anterior (aulas + provas obrigatórias)</label><% } %>
+      <label>Liberar somente após aprovação na prova
+        <select name="unlock_quiz_id">
+          <option value="">— não exigir prova —</option>
+          <% modules.slice(0, i).forEach(pm => pm.quizzes.forEach(q => { %>
+            <option value="<%= q.id %>" <%= m.unlock_quiz_id === q.id ? 'selected' : '' %>><%= pm.title %> › <%= q.title %> (mín. <%= q.pass_score %>%)</option>
+          <% })) %>
+        </select>
+      </label>
+      <label>Liberar X dias após a matrícula (conteúdo gotejado) <input type="number" name="release_after_days" min="0" value="<%= m.release_after_days || '' %>" placeholder="vazio = imediato"></label>
+      <button class="btn small">Salvar módulo</button>
+    </form>
+  </details>
+  <% } %>
+</section>
+<% }) %>
+
+<% if (editable) { %>
+<form method="post" action="/admin/cursos/<%= course.id %>/modulos" class="card inline-form">
+  <%- include('../partials/csrf') %>
+  <input name="title" placeholder="Nome do novo módulo" required>
+  <button class="btn">+ Adicionar módulo</button>
+</form>
+<% } %>
+
+<section class="card">
+  <h2>Avaliação final (após todas as aulas)</h2>
+  <ul class="items admin-items">
+    <% finalQuizzes.forEach(q => { %>
+      <li><span class="icon">📝</span><a href="/admin/provas/<%= q.id %>"><%= q.title %></a><span class="meta"><%= q.questions %> questões · mín. <%= q.pass_score %>%</span></li>
+    <% }) %>
+    <% if (!finalQuizzes.length) { %><li class="muted">Nenhuma.</li><% } %>
+  </ul>
+  <% if (editable) { %>
+  <form method="post" action="/admin/cursos/<%= course.id %>/provas" class="inline-form">
+    <%- include('../partials/csrf') %>
+    <input name="title" value="Avaliação final">
+    <button class="btn small secondary">+ Avaliação final</button>
+  </form>
+  <% } %>
+</section>
+<%- include('../partials/footer') %>

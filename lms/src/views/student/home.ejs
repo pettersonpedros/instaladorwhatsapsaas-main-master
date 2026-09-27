@@ -1,0 +1,21 @@
+<%- include('../partials/header') %>
+<h1><%= staff ? 'Cursos (pré-visualização da equipe)' : 'Meus cursos' %></h1>
+<% if (!cards.length) { %>
+  <div class="card empty">Você ainda não está matriculado em nenhum curso. Fale com nosso time.</div>
+<% } %>
+<div class="grid cards">
+<% cards.forEach(({ course, percent, completed, next, lessonsCount }) => { %>
+  <a class="course-card" href="/curso/<%= course.id %>">
+    <div class="cover" <% if (course.cover_url) { %>style="background-image:url('<%= course.cover_url %>')"<% } %>>
+      <% if (completed) { %><span class="tag success">Concluído</span><% } else if (staff && !course.published) { %><span class="tag">Rascunho</span><% } %>
+    </div>
+    <div class="body">
+      <h3><%= course.title %></h3>
+      <p class="muted small"><%= lessonsCount %> aula(s)</p>
+      <%- include('../partials/progress', { value: percent }) %>
+      <p class="small"><strong><%= percent %>%</strong> concluído<% if (next && !completed) { %> · Próxima: <%= next.title %><% } %></p>
+    </div>
+  </a>
+<% }) %>
+</div>
+<%- include('../partials/footer') %>

@@ -1,0 +1,42 @@
+<%- include('../partials/header') %>
+<h1>Painel</h1>
+<div class="kpis">
+  <div class="kpi"><span><%= kpi.students %></span>Alunos ativos</div>
+  <div class="kpi"><span><%= kpi.active7 %></span>Acessaram nos últimos 7 dias</div>
+  <div class="kpi"><span><%= kpi.enrollments %></span>Matrículas</div>
+  <div class="kpi"><span><%= kpi.completions %></span>Cursos concluídos</div>
+  <div class="kpi"><span><%= kpi.enrollments ? Math.round(kpi.completions / kpi.enrollments * 100) : 0 %>%</span>Taxa de conclusão</div>
+  <div class="kpi"><span><%= kpi.completions30 %></span>Conclusões (30 dias)</div>
+</div>
+
+<% if (notifications.length) { %>
+<div class="card">
+  <div class="row-between"><h3>🔔 Notificações</h3>
+    <form method="post" action="/admin/notificacoes/lidas"><%- include('../partials/csrf') %><button class="btn small secondary">Marcar todas como lidas</button></form></div>
+  <ul class="timeline">
+    <% notifications.forEach(n => { %><li><span class="muted small"><%= util.formatDate(n.created_at) %></span> <strong><%= n.title %></strong> <%= n.body %> <% if (n.link) { %><a href="<%= n.link %>">abrir</a><% } %></li><% }) %>
+  </ul>
+</div>
+<% } %>
+
+<% if (failedJobs.length) { %>
+<div class="alert error">⚠️ Há gatilhos com erro de envio. <a href="/admin/gatilhos/execucoes?status=error">Ver execuções com erro</a></div>
+<% } %>
+
+<div class="grid two">
+  <div class="card">
+    <h3>Cursos</h3>
+    <table class="table">
+      <tr><th>Curso</th><th>Matric.</th><th>Concl.</th><th></th></tr>
+      <% courses.forEach(c => { %>
+        <tr><td><%= c.title %><%= c.published ? '' : ' (rascunho)' %></td><td><%= c.enrolled %></td><td><%= c.completed %></td>
+          <td><a href="/admin/relatorios/curso/<%= c.id %>">relatório</a></td></tr>
+      <% }) %>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Atividade recente</h3>
+    <%- include('../partials/activity', { items: recent }) %>
+  </div>
+</div>
+<%- include('../partials/footer') %>

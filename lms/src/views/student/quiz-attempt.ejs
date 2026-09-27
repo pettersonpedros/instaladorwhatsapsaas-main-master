@@ -1,0 +1,25 @@
+<%- include('../partials/header') %>
+<div class="card narrow">
+  <div class="quiz-head">
+    <h1><%= quiz.title %></h1>
+    <% if (deadline) { %><div class="timer" id="timer" data-deadline="<%= deadline.toISOString() %>">--:--</div><% } %>
+  </div>
+  <form method="post" action="/prova/<%= quiz.id %>/tentativa/<%= attempt.id %>" id="quiz-form">
+    <%- include('../partials/csrf') %>
+    <% questions.forEach((q, i) => { %>
+      <fieldset class="question">
+        <legend><span class="muted"><%= i + 1 %>.</span> <span class="pre"><%= q.text %></span></legend>
+        <% if (q.kind === 'multiple') { %><p class="small muted">Marque todas as alternativas corretas.</p><% } %>
+        <% q.options.forEach(o => { %>
+          <label class="option">
+            <input type="<%= q.kind === 'multiple' ? 'checkbox' : 'radio' %>" name="q<%= q.id %>" value="<%= o.id %>">
+            <span><%= o.text %></span>
+          </label>
+        <% }) %>
+      </fieldset>
+    <% }) %>
+    <button class="btn big" data-confirm="Enviar respostas? Não será possível alterar depois.">Enviar respostas</button>
+  </form>
+</div>
+<script src="/static/quiz.js"></script>
+<%- include('../partials/footer') %>

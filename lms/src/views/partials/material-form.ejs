@@ -1,0 +1,13 @@
+<details class="add-material">
+  <summary>+ Adicionar material</summary>
+  <form method="post" action="/admin/materiais?_csrf=<%= csrf %>" enctype="multipart/form-data" class="stack">
+    <input type="hidden" name="course_id" value="<%= courseId %>">
+    <% if (typeof moduleId !== 'undefined' && moduleId) { %><input type="hidden" name="module_id" value="<%= moduleId %>"><% } %>
+    <% if (typeof lessonId !== 'undefined' && lessonId) { %><input type="hidden" name="lesson_id" value="<%= lessonId %>"><% } %>
+    <input type="hidden" name="back" value="<%= back %>">
+    <input name="title" placeholder="Título (ex.: Apostila PDF, Planilha modelo)">
+    <input name="url" placeholder="Link (Google Drive, Dropbox, site...) — recomendado p/ economizar espaço">
+    <label class="small">ou envie um arquivo (até <%= maxMb %> MB): <input type="file" name="file"></label>
+    <button class="btn small">Adicionar</button>
+  </form>
+</details>

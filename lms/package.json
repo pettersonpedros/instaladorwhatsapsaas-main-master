@@ -1,0 +1,28 @@
+{
+  "name": "lms-treinamentos",
+  "version": "1.0.0",
+  "description": "LMS de treinamento com vídeos do YouTube, provas, liberação de módulos e gatilhos automáticos",
+  "main": "src/server.js",
+  "private": true,
+  "scripts": {
+    "start": "node src/server.js",
+    "migrate": "node src/scripts/migrate.js",
+    "create-admin": "node src/scripts/create-admin.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "connect-pg-simple": "^10.0.0",
+    "dotenv": "^18.0.4",
+    "ejs": "^6.0.1",
+    "express": "^4.22.3",
+    "express-session": "^1.19.0",
+    "helmet": "^8.3.0",
+    "multer": "^2.4.0",
+    "nodemailer": "^10.0.11",
+    "pg": "^8.23.0"
+  }
+}

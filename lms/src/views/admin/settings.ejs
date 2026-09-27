@@ -1,0 +1,51 @@
+<%- include('../partials/header') %>
+<h1>Configurações</h1>
+<form method="post" action="/admin/configuracoes" class="stack">
+  <%- include('../partials/csrf') %>
+  <div class="card stack">
+    <h3>Identidade</h3>
+    <label>Nome da plataforma <input name="site_name" value="<%= s.site_name %>"></label>
+    <label>URL pública (usada nos links das mensagens e certificados) <input name="public_url" value="<%= s.public_url %>" placeholder="https://treinamento.suaempresa.com.br"></label>
+    <div class="grid two">
+      <label>Cor principal <input type="color" name="primary_color" value="<%= s.primary_color %>"></label>
+      <label>URL do logo <input name="logo_url" value="<%= s.logo_url %>" placeholder="https://..."></label>
+    </div>
+  </div>
+  <div class="card stack">
+    <h3>WhatsApp (API do seu Whaticket / SaaS)</h3>
+    <p class="small muted">No Whaticket: Conexões → edite a conexão → copie o <strong>Token</strong>. A URL normalmente é <code>https://SEU-BACKEND/api/messages/send</code>. O LMS envia <code>POST {"number": "5511999998888", "body": "mensagem"}</code> com <code>Authorization: Bearer TOKEN</code>.</p>
+    <label>URL do endpoint <input name="whatsapp_api_url" value="<%= s.whatsapp_api_url %>" placeholder="https://api.seudominio.com/api/messages/send"></label>
+    <label>Token <input type="password" name="whatsapp_api_token" placeholder="<%= s.whatsapp_api_token ? '•••••• (definido — deixe vazio para manter)' : '' %>" autocomplete="off"></label>
+  </div>
+  <div class="card stack">
+    <h3>E-mail (SMTP)</h3>
+    <div class="grid three">
+      <label>Servidor <input name="smtp_host" value="<%= s.smtp_host %>" placeholder="smtp.gmail.com"></label>
+      <label>Porta <input type="number" name="smtp_port" value="<%= s.smtp_port %>"></label>
+      <label class="check"><input type="checkbox" name="smtp_secure" <%= s.smtp_secure ? 'checked' : '' %>> SSL (porta 465)</label>
+    </div>
+    <div class="grid three">
+      <label>Usuário <input name="smtp_user" value="<%= s.smtp_user %>" autocomplete="off"></label>
+      <label>Senha <input type="password" name="smtp_pass" placeholder="<%= s.smtp_pass ? '•••••• (definida)' : '' %>" autocomplete="off"></label>
+      <label>Remetente <input name="smtp_from" value="<%= s.smtp_from %>" placeholder="Treinamentos <no-reply@...>"></label>
+    </div>
+  </div>
+  <div class="card stack">
+    <h3>Webhooks</h3>
+    <label>Segredo para assinatura (header <code>X-LMS-Signature: sha256=HMAC</code>) <input type="password" name="webhook_secret" placeholder="<%= s.webhook_secret ? '•••••• (definido)' : 'opcional' %>" autocomplete="off"></label>
+  </div>
+  <button class="btn big">Salvar configurações</button>
+</form>
+<div class="grid two">
+  <form method="post" action="/admin/configuracoes/testar-whatsapp" class="card inline-form">
+    <%- include('../partials/csrf') %>
+    <input name="number" placeholder="Seu WhatsApp p/ teste" value="<%= user.phone || '' %>" required>
+    <button class="btn secondary">Testar WhatsApp</button>
+  </form>
+  <form method="post" action="/admin/configuracoes/testar-email" class="card inline-form">
+    <%- include('../partials/csrf') %>
+    <input type="email" name="email" placeholder="E-mail p/ teste" value="<%= user.email %>" required>
+    <button class="btn secondary">Testar e-mail</button>
+  </form>
+</div>
+<%- include('../partials/footer') %>
