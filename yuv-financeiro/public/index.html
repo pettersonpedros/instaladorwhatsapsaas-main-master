@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YUV Financeiro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+</head>
+<body>
+<div class="app">
+  <aside class="side" aria-label="Menu">
+    <div class="brand">YUV <span>Financeiro</span></div>
+    <button class="nav" data-go="clientes">Clientes e contratos</button>
+    <button class="nav" data-go="tabelas">Tabelas de preço</button>
+    <button class="nav" data-go="importar">Importar planilha</button>
+    <button class="nav" data-go="cobranca">Cobrança do mês</button>
+    <button class="nav" data-go="conciliacao">Conciliação</button>
+    <button class="nav" data-go="relatorios">Relatórios agendados</button>
+    <button class="nav" data-go="pagamentos">Contas a pagar</button>
+    <button class="nav" data-go="insights">Insights</button>
+    <div class="foot" id="foot"></div>
+  </aside>
+  <main id="view"></main>
+</div>
+<div id="layer"></div>
+<script src="/shared/domain.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
