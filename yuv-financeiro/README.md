@@ -40,19 +40,31 @@ O que o sistema faz:
 - Falhou boleto ou NF? A cobrança fica registrada, aparece "Gerar boleto/NF" na Conciliação e o e-mail
   só é enviado quando o boleto existir.
 
+### Fase 1: só boleto (NF fora do sistema)
+
+Com `NF_AUTOMATICA=0` (padrão) o sistema gera só o boleto na Asaas e **não chama nada de nota fiscal** —
+não precisa configurar serviço municipal nem alíquotas. A coluna "Nota fiscal" da Conciliação passa a
+controlar o que emitir à mão:
+- cliente "Boleto + NF": já nasce como **Emitir NF manualmente**;
+- cliente "Só boleto": fica **Aguardando pgto** e vira **Emitir NF manualmente** quando o pagamento quita;
+- depois de emitir a nota no seu emissor atual, clique **NF emitida** (pode informar o número) — fica no histórico.
+
+O relatório "NFs pendentes pós-pagamento" lista as que faltam. Para ligar a NF depois, preencha `ASAAS_NF_*`,
+mude para `NF_AUTOMATICA=1` e reinicie; as cobranças antigas marcadas como manuais continuam manuais.
+
 ### Roteiro para ligar
 
 1. Crie conta no sandbox (https://sandbox.asaas.com), gere a chave de API e preencha `ASAAS_*` no `.env`
    com `ASAAS_ENV=sandbox` e `BILLING_PROVIDER=asaas`.
-2. Configure as notas fiscais na Asaas (dados fiscais da empresa, certificado/prefeitura). Com a contabilidade,
-   defina o serviço municipal (`ASAAS_NF_SERVICO_ID` ou código + nome) e as alíquotas `ASAAS_NF_*`.
+2. (Só quando for ligar a NF) Configure as notas fiscais na Asaas e, com a contabilidade, preencha
+   `ASAAS_NF_SERVICO_ID` (ou código + nome), as alíquotas `ASAAS_NF_*` e `NF_AUTOMATICA=1`.
 3. Na Asaas, em Integrações > Webhooks, cadastre `https://SEU-DOMINIO/api/webhooks/asaas`, com o token
-   de `ASAAS_WEBHOOK_TOKEN` e os eventos de cobrança e de nota fiscal.
+   de `ASAAS_WEBHOOK_TOKEN` e os eventos de cobrança (e de nota fiscal, quando ligar a NF).
 4. Reinicie (`pm2 restart yuv-financeiro --update-env`), cadastre 1 cliente de teste com CNPJ válido,
-   envie a cobrança, pague no sandbox e confira: baixa automática, NF emitida, link do boleto na Conciliação.
+   envie a cobrança, pague no sandbox e confira: link do boleto na Conciliação, e-mail com o link e baixa automática.
 5. Só então troque para `ASAAS_ENV=production` com a chave de produção.
 
-Sem `ASAAS_API_KEY` ou serviço municipal configurado o sistema nem sobe — de propósito, para não emitir
+Sem `ASAAS_API_KEY` (ou, com `NF_AUTOMATICA=1`, sem serviço municipal) o sistema nem sobe — de propósito, para não emitir
 cobrança sem NF.
 
 ## Rodar

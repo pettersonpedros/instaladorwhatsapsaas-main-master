@@ -21,6 +21,7 @@ function asaasConfig(env = process.env) {
   const sandbox = (env.ASAAS_ENV || 'sandbox') !== 'production';
   const num = (k, d = 0) => { const n = parseFloat(String(env[k] ?? d).replace(',', '.')); return isNaN(n) ? d : n; };
   return {
+    nfAuto: env.NF_AUTOMATICA === '1',
     base: (sandbox ? 'https://api-sandbox.asaas.com' : 'https://api.asaas.com') + '/v3',
     sandbox,
     key: env.ASAAS_API_KEY || '',
@@ -39,7 +40,7 @@ function asaasConfig(env = process.env) {
 
 function makeAsaas(cfg = asaasConfig(), fetchImpl = (...a) => fetch(...a)) {
   if (!cfg.key) throw new Error('BILLING_PROVIDER=asaas exige ASAAS_API_KEY.');
-  if (!cfg.nf.municipalServiceId && !cfg.nf.municipalServiceCode) throw new Error('Configure ASAAS_NF_SERVICO_ID ou ASAAS_NF_SERVICO_CODIGO (serviço municipal da NFS-e).');
+  if (cfg.nfAuto && !cfg.nf.municipalServiceId && !cfg.nf.municipalServiceCode) throw new Error('NF_AUTOMATICA=1 exige ASAAS_NF_SERVICO_ID ou ASAAS_NF_SERVICO_CODIGO (serviço municipal da NFS-e).');
 
   async function call(method, path, body) {
     const r = await fetchImpl(cfg.base + path, {
@@ -111,4 +112,7 @@ if (name === 'simulado') provider = simulado;
 else if (name === 'asaas') provider = makeAsaas();
 else throw new Error(`BILLING_PROVIDER "${name}" não implementado. Use simulado ou asaas.`);
 
-module.exports = { provider, simulated: name === 'simulado', makeAsaas, asaasConfig };
+/* NF_AUTOMATICA=1: emite NFS-e pelo provedor. 0: o sistema só controla quais NFs emitir à mão. */
+const nfAuto = process.env.NF_AUTOMATICA === '1';
+
+module.exports = { provider, simulated: name === 'simulado', nfAuto, makeAsaas, asaasConfig };

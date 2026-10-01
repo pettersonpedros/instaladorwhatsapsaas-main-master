@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'yuv-test-'));
 process.env.TZ = 'America/Sao_Paulo';
+process.env.NF_AUTOMATICA = '1';
 delete process.env.SMTP_URL;
 const store = require('../server/db');
 const { build } = require('../server/app');

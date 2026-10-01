@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 Object.assign(process.env, {
   DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'yuv-asaas-')), TZ: 'America/Sao_Paulo',
-  BILLING_PROVIDER: 'asaas', ASAAS_ENV: 'sandbox', ASAAS_API_KEY: '$aact_teste', ASAAS_NF_SERVICO_ID: '123', ASAAS_WEBHOOK_TOKEN: 'tok-webhook-123'
+  BILLING_PROVIDER: 'asaas', ASAAS_ENV: 'sandbox', ASAAS_API_KEY: '$aact_teste', ASAAS_NF_SERVICO_ID: '123', ASAAS_WEBHOOK_TOKEN: 'tok-webhook-123', NF_AUTOMATICA: '1'
 });
 delete process.env.SMTP_URL;
 

@@ -8,7 +8,7 @@ const store = require('./db');
 const auth = require('./auth');
 const svc = require('./services');
 const mailer = require('./mailer');
-const { simulated, provider } = require('./providers');
+const { simulated, provider, nfAuto } = require('./providers');
 const { HttpError } = svc;
 
 const UPLOADS = path.join(store.DATA_DIR, 'anexos');
@@ -63,7 +63,7 @@ function build() {
   });
 
   api.use(auth.requireAuth);
-  api.get('/me', (req, res) => res.json({ ...req.user, mail: mailer.enabled ? 'smtp' : 'simulado', provider: simulated ? 'simulado' : provider.name, sandbox: !!(provider.config && provider.config.sandbox) }));
+  api.get('/me', (req, res) => res.json({ ...req.user, mail: mailer.enabled ? 'smtp' : 'simulado', provider: simulated ? 'simulado' : provider.name, sandbox: !!(provider.config && provider.config.sandbox), nfAuto }));
   api.get('/state', (req, res) => res.json(store.state()));
 
   /* ---- clientes ---- */
@@ -136,6 +136,7 @@ function build() {
 
   /* ---- conciliação ---- */
   api.post('/invoices/:id/payments', async (req, res) => res.json(await svc.applyPayment(req.params.id, req.body.valor, req.body.data, 'manual', who(req))));
+  api.post('/invoices/:id/nf-manual', (req, res) => res.json(svc.markNfManual(req.params.id, req.body.numero, who(req))));
   api.post('/invoices/:id/provider', async (req, res) => res.json(await svc.retryProvider(req.params.id)));
   api.post('/invoices/:id/reminder', async (req, res) => res.json(await svc.sendReminder(req.params.id, who(req))));
   api.post('/bank/import', memUpload.single('file'), async (req, res) => {

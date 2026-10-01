@@ -76,8 +76,8 @@ function showLogin() {
   });
 }
 function paintFoot() {
-  const sim = [ME.mail === 'simulado' ? 'e-mail' : '', ME.provider === 'simulado' ? 'boleto/NF' : '', ME.sandbox ? 'Asaas sandbox' : ''].filter(Boolean);
-  $('#foot').innerHTML = `Conectado como <strong>${esc(ME.name)}</strong><br>${sim.length ? `<span style="color:#F3C77A">Modo simulado: ${sim.join(' e ')}.</span><br>` : ''}<button id="logout">Sair</button>`;
+  const sim = [ME.mail === 'simulado' ? 'e-mail' : '', ME.provider === 'simulado' ? 'boleto' : '', ME.sandbox ? 'Asaas sandbox' : ''].filter(Boolean);
+  $('#foot').innerHTML = `Conectado como <strong>${esc(ME.name)}</strong><br>${sim.length ? `<span style="color:#F3C77A">Modo simulado: ${sim.join(' e ')}.</span><br>` : ''}${ME.nfAuto ? '' : '<span style="color:#9FB3B0">NF automática desligada.</span><br>'}<button id="logout">Sair</button>`;
   $('#logout').addEventListener('click', async () => { await api('POST', '/logout').catch(() => {}); S = null; $('#view').innerHTML = ''; showLogin(); });
 }
 
@@ -532,7 +532,7 @@ function vCobranca(el) {
   const nx = el.querySelector('[data-next]'); if (nx) nx.addEventListener('click', () => { if (billable.length && !confirm(`Ainda há ${billable.length} cobrança(s) prontas não enviadas em ${compLabel(comp)}. Abrir a próxima competência mesmo assim?`)) return; selCob = null; act(() => api('POST', '/billing/next'), r => `Competência ${compLabel(r.competencia)} aberta.`); });
   el.querySelector('[data-xls]').addEventListener('click', () => fetchFile('/api/billing/prefatura.csv'));
   el.querySelector('[data-send]').addEventListener('click', () => {
-    modal(`<h2>Confirmar envio?</h2><p style="margin:0;line-height:1.55;color:var(--ink2)">Você vai enviar <strong>${sel.length} cobrança${sel.length !== 1 ? 's' : ''}</strong> no total de <strong class="num">${brl(tot)}</strong> (${brl(totCom)} de comodato). <strong>${nNow}</strong> NF${nNow !== 1 ? 's' : ''} sai${nNow !== 1 ? 'em' : ''} agora; ${sel.length - nNow} só depois do pagamento.</p>${todayISO() <= P.fim ? `<div class="alert w"><div><strong>A apuração só termina em ${dBR(P.fim)}.</strong> As quantidades ainda podem mudar até lá.</div></div>` : ''}<p class="hint" style="margin:0">Não dá para desfazer. Cancelar depois exige estornar boleto e NF.</p>
+    modal(`<h2>Confirmar envio?</h2><p style="margin:0;line-height:1.55;color:var(--ink2)">Você vai enviar <strong>${sel.length} cobrança${sel.length !== 1 ? 's' : ''}</strong> no total de <strong class="num">${brl(tot)}</strong> (${brl(totCom)} de comodato). ${ME.nfAuto ? `<strong>${nNow}</strong> NF${nNow !== 1 ? 's' : ''} sai${nNow !== 1 ? 'em' : ''} agora; ${sel.length - nNow} só depois do pagamento.` : 'Só boletos — a NF automática está desligada; o sistema marca quais NFs emitir à mão.'}</p>${todayISO() <= P.fim ? `<div class="alert w"><div><strong>A apuração só termina em ${dBR(P.fim)}.</strong> As quantidades ainda podem mudar até lá.</div></div>` : ''}<p class="hint" style="margin:0">Não dá para desfazer. Cancelar depois exige estornar boleto e NF.</p>
     <div id="serr" class="err"></div>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-x>Cancelar</button><button class="btn pri" data-ok>Confirmar envio</button></div>`, m => {
       m.querySelector('[data-x]').addEventListener('click', closeModal);
@@ -541,7 +541,7 @@ function vCobranca(el) {
         const r = await act(() => api('POST', '/billing/send', { comp, ids: sel.map(x => x.c.id) }), null, $('#serr'));
         if (!r) { e.target.disabled = false; return; }
         selCob = null;
-        modal(`<h2>${r.created} cobrança${r.created !== 1 ? 's' : ''} emitida${r.created !== 1 ? 's' : ''}</h2><p style="margin:0">Total <strong class="num">${brl(r.total)}</strong> · ${r.nfNow} NF agora, ${r.created - r.nfNow} após pagamento.</p>
+        modal(`<h2>${r.created} cobrança${r.created !== 1 ? 's' : ''} emitida${r.created !== 1 ? 's' : ''}</h2><p style="margin:0">Total <strong class="num">${brl(r.total)}</strong>${ME.nfAuto ? ` · ${r.nfNow} NF agora, ${r.created - r.nfNow} após pagamento` : ' · NF automática desligada'}.</p>
           ${r.errors.length ? `<div class="alert w" style="display:block"><strong>Atenção:</strong><ul style="margin:6px 0 0;padding-left:18px">${r.errors.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
           <div class="row" style="justify-content:flex-end"><button class="btn pri" data-x>Fechar</button></div>`, mm => mm.querySelector('[data-x]').addEventListener('click', closeModal));
       });
@@ -566,7 +566,7 @@ function vConciliacao(el) {
   const all = S.invoices.filter(i => i.comp === fConc.comp);
   const fat = all.reduce((s, i) => s + i.valor, 0), rec = all.reduce((s, i) => s + Math.min(i.pago, i.valor), 0);
   const venc = all.filter(i => !isPaid(i) && (daysLate(i) > 0 || i.pago > 0)), vv = venc.reduce((s, i) => s + (i.valor - i.pago), 0);
-  const nfp = all.filter(i => i.nf === 'aguardando' || i.nf === 'retida').length, nfErr = all.filter(i => i.nf === 'erro' || !i.boletoRef).length;
+  const nfp = all.filter(i => ME.nfAuto ? (i.nf === 'aguardando' || i.nf === 'retida') : i.nf === 'manual').length, nfErr = all.filter(i => i.nf === 'erro' || !i.boletoRef).length;
   const tabs = { todos: all, pagos: all.filter(isPaid), parciais: all.filter(i => i.pago > 0 && !isPaid(i)), vencidos: all.filter(i => i.pago === 0 && daysLate(i) > 0), aberto: all.filter(i => i.pago === 0 && daysLate(i) === 0) };
   const list = tabs[fConc.tab].filter(i => !fConc.q || client(i.cid)?.name.toLowerCase().includes(fConc.q.toLowerCase())).sort((a, b) => (b.valor - b.pago > 0.005) - (a.valor - a.pago > 0.005) || a.venc.localeCompare(b.venc));
   el.innerHTML = head + `
@@ -574,7 +574,7 @@ function vConciliacao(el) {
    <div class="card kpi"><div class="k">Faturado</div><div class="v num">${brl(fat)}</div></div>
    <div class="card kpi"><div class="k">Recebido</div><div class="v num" style="color:var(--okf)">${brl(rec)}</div><div class="s">${fat ? pct(rec / fat) : '0%'} do faturado</div></div>
    <div class="card kpi"><div class="k">Vencido</div><div class="v num" style="color:var(--bf)">${brl(vv)}</div><div class="s">${venc.length} cobrança${venc.length !== 1 ? 's' : ''}</div></div>
-   <div class="card kpi"><div class="k">NF aguardando pagamento</div><div class="v num">${nfp}</div><div class="s">${nfErr ? `<span style="color:var(--bf);font-weight:600">${nfErr} com falha no boleto/NF</span>` : 'emitem sozinhas ao pagar'}</div></div>
+   <div class="card kpi"><div class="k">${ME.nfAuto ? 'NF aguardando pagamento' : 'NF para emitir à mão'}</div><div class="v num">${nfp}</div><div class="s">${nfErr ? `<span style="color:var(--bf);font-weight:600">${nfErr} com falha no boleto/NF</span>` : ME.nfAuto ? 'emitem sozinhas ao pagar' : 'NF automática desligada'}</div></div>
   </div>
   ${unHtml}
   <div class="tabs" role="tablist">${[['todos', 'Todos'], ['pagos', 'Pagos'], ['parciais', 'Parciais'], ['vencidos', 'Vencidos'], ['aberto', 'Em aberto']].map(([k, t]) => `<button class="tab ${fConc.tab === k ? 'on' : ''}" role="tab" aria-selected="${fConc.tab === k}" data-tab="${k}">${t} (${tabs[k].length})</button>`).join('')}</div>
@@ -584,12 +584,13 @@ function vConciliacao(el) {
     <td style="font-weight:600">${esc(c?.name || '—')}${i.boletoRef ? `<div class="sub num" style="font-weight:400">${i.boletoUrl ? `<a class="link" href="${esc(i.boletoUrl)}" target="_blank" rel="noopener">boleto</a>` : esc(i.boletoRef)}${i.nfUrl ? ` · <a class="link" href="${esc(i.nfUrl)}" target="_blank" rel="noopener">NF</a>` : ''}</div>` : ''}</td><td class="num">${dShort(i.venc)}</td><td class="r num">${nf2(i.valor)}</td><td class="num">${i.pagoEm ? dShort(i.pagoEm) : '—'}</td>
     <td class="r num">${i.pago ? nf2(i.pago) : '—'}</td><td class="r num" style="${dif < -0.005 ? 'color:var(--bf);font-weight:600' : 'color:var(--mut)'}">${dif < -0.005 ? '−' + nf2(-dif) : '—'}</td>
     <td><span class="b ${st[1]}">${st[0]}</span></td><td><span class="b ${nfx[1]}" ${i.nfRef ? `title="${esc(i.nfRef)}"` : ''}>${nfx[0]}</span></td>
-    <td class="r" style="white-space:nowrap">${!i.boletoRef || i.nf === 'erro' ? `<button class="btn sm pri" data-prov="${i.id}">Gerar ${!i.boletoRef ? 'boleto' : 'NF'}</button> ` : ''}${!isPaid(i) ? `<button class="btn sm" data-pay="${i.id}">Registrar pagamento</button> ${daysLate(i) > 0 ? `<button class="btn sm" data-rem="${i.id}">Lembrete</button>` : ''}` : ''}</td></tr>`; }).join('') || '<tr><td colspan="9" class="hint" style="padding:24px">Nada nesta aba.</td></tr>'}</tbody>
+    <td class="r" style="white-space:nowrap">${!i.boletoRef || i.nf === 'erro' ? `<button class="btn sm pri" data-prov="${i.id}">Gerar ${!i.boletoRef ? 'boleto' : 'NF'}</button> ` : ''}${i.nf === 'manual' ? `<button class="btn sm" data-nfm="${i.id}">NF emitida</button> ` : ''}${!isPaid(i) ? `<button class="btn sm" data-pay="${i.id}">Registrar pagamento</button> ${daysLate(i) > 0 ? `<button class="btn sm" data-rem="${i.id}">Lembrete</button>` : ''}` : ''}</td></tr>`; }).join('') || '<tr><td colspan="9" class="hint" style="padding:24px">Nada nesta aba.</td></tr>'}</tbody>
   </table></div>`;
   $('#cc', el).addEventListener('change', e => { fConc.comp = e.target.value; vConciliacao(el); });
   $('#cq', el).addEventListener('input', e => { fConc.q = e.target.value; const p = e.target.selectionStart; vConciliacao(el); const i = $('#cq', el); i.focus(); i.setSelectionRange(p, p); });
   el.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { fConc.tab = b.dataset.tab; vConciliacao(el); }));
   el.querySelectorAll('[data-rem]').forEach(b => b.addEventListener('click', () => { const i = S.invoices.find(x => x.id === b.dataset.rem); act(() => api('POST', `/invoices/${i.id}/reminder`), r => `Lembrete enviado para ${client(i.cid).name}${simNote(r)}.`); }));
+  el.querySelectorAll('[data-nfm]').forEach(b => b.addEventListener('click', () => { const n = prompt('Número da NF emitida (opcional)'); if (n === null) return; act(() => api('POST', `/invoices/${b.dataset.nfm}/nf-manual`, { numero: n }), 'NF marcada como emitida.'); }));
   el.querySelectorAll('[data-prov]').forEach(b => b.addEventListener('click', () => act(() => api('POST', `/invoices/${b.dataset.prov}/provider`), 'Boleto/NF gerados.')));
   el.querySelectorAll('[data-pay]').forEach(b => b.addEventListener('click', () => registrarPg(S.invoices.find(x => x.id === b.dataset.pay))));
   el.querySelector('[data-exp]').addEventListener('click', () => download(`conciliacao_${fConc.comp}.csv`, [['cliente', 'vencimento', 'cobrado', 'pago_em', 'recebido', 'status', 'nf', 'boleto'], ...all.map(i => [client(i.cid)?.name, dBR(i.venc), nf2(i.valor), dBR(i.pagoEm), nf2(i.pago), invStatus(i)[0], NFTXT[i.nf][0], i.boletoRef || ''])]));
@@ -616,7 +617,7 @@ function registrarPg(i) {
     m.querySelector('[data-x]').addEventListener('click', closeModal);
     m.querySelector('[data-ok]').addEventListener('click', async () => {
       const v = parseNum($('#pv').value); if (!(v > 0)) { $('#perr').textContent = 'Informe um valor maior que zero.'; return; }
-      const r = await act(() => api('POST', `/invoices/${i.id}/payments`, { valor: v, data: $('#pd').value || todayISO() }), x => isPaid(x) ? (x.nf === 'emitida_pos' ? 'Pagamento registrado. NF emitida automaticamente.' : 'Pagamento registrado.') : `Pagamento parcial. Falta ${brl(x.valor - x.pago)}.`, $('#perr'));
+      const r = await act(() => api('POST', `/invoices/${i.id}/payments`, { valor: v, data: $('#pd').value || todayISO() }), x => isPaid(x) ? (x.nf === 'emitida_pos' ? 'Pagamento registrado. NF emitida automaticamente.' : x.nf === 'manual' ? 'Pagamento registrado. Emita a NF manualmente.' : 'Pagamento registrado.') : `Pagamento parcial. Falta ${brl(x.valor - x.pago)}.`, $('#perr'));
       if (r) closeModal();
     });
   });

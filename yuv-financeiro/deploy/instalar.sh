@@ -83,5 +83,7 @@ CRON="15 3 * * * cd $APP_DIR && $NODE_DIR/bin/node --env-file=.env scripts/backu
 
 echo
 echo "Pronto: https://$DOMINIO"
+echo "Agora edite $APP_DIR/.env: BILLING_PROVIDER=asaas, ASAAS_API_KEY (sandbox primeiro) e SMTP_URL."
+echo "Depois: pm2 restart yuv-financeiro --update-env"
 echo "Webhook da Asaas: https://$DOMINIO/api/webhooks/asaas"
 echo "Token do webhook (cole na Asaas): $(grep ^ASAAS_WEBHOOK_TOKEN= .env | cut -d= -f2)"

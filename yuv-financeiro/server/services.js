@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const D = require('../shared/domain');
 const store = require('./db');
 const mailer = require('./mailer');
-const { provider } = require('./providers');
+const { provider, nfAuto } = require('./providers');
 
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 const bad = msg => { throw new HttpError(400, msg); };
@@ -163,7 +163,7 @@ function chargeMail(S, c, inv, k, P) {
   const aj = (c.ajustes || []).map(a => `  ${a.desc}: ${D.brl(a.valor)}`).join('\n');
   return {
     subject: `YUV — cobrança ${D.compLabel(inv.comp)} · vencimento ${D.dBR(inv.venc)}`,
-    text: `Olá, equipe ${c.name}.\n\nSegue a cobrança da competência ${D.compLabel(inv.comp)} (apuração de ${D.dBR(P.ini)} a ${D.dBR(P.fim)}).\n\nDispositivos ativos: ${k.devices}${k.com ? ` (${k.com} em comodato)` : ''}${k.pouco ? `\nAbaixo de ${c.diasMin} dias ativos, sem cobrança: ${k.pouco}` : ''}${k.free ? `\nCortesia: ${k.free}` : ''}\n\n${linhas}${aj ? '\n\nAjustes:\n' + aj : ''}\n\nTotal: ${D.brl(inv.valor)}\nVencimento: ${D.dBR(inv.venc)}${inv.boletoRef ? `\nBoleto: ${inv.boletoUrl || inv.boletoRef}` : ''}\n${inv.mode === 'now' ? `Nota fiscal: ${inv.nfRef || 'emitida junto com esta cobrança'}` : 'A nota fiscal será emitida após a confirmação do pagamento.'}\n\nDúvidas: ${S.cfg.emailFinanceiro}\n\nEquipe YUV`
+    text: `Olá, equipe ${c.name}.\n\nSegue a cobrança da competência ${D.compLabel(inv.comp)} (apuração de ${D.dBR(P.ini)} a ${D.dBR(P.fim)}).\n\nDispositivos ativos: ${k.devices}${k.com ? ` (${k.com} em comodato)` : ''}${k.pouco ? `\nAbaixo de ${c.diasMin} dias ativos, sem cobrança: ${k.pouco}` : ''}${k.free ? `\nCortesia: ${k.free}` : ''}\n\n${linhas}${aj ? '\n\nAjustes:\n' + aj : ''}\n\nTotal: ${D.brl(inv.valor)}\nVencimento: ${D.dBR(inv.venc)}${inv.boletoRef ? `\nBoleto: ${inv.boletoUrl || inv.boletoRef}` : ''}\n${!nfAuto ? (inv.mode === 'now' ? 'A nota fiscal será enviada separadamente.' : 'A nota fiscal será enviada após a confirmação do pagamento.') : inv.mode === 'now' ? `Nota fiscal: ${inv.nfRef || 'emitida junto com esta cobrança'}` : 'A nota fiscal será emitida após a confirmação do pagamento.'}\n\nDúvidas: ${S.cfg.emailFinanceiro}\n\nEquipe YUV`
   };
 }
 async function sendBilling(comp, ids, user) {
@@ -217,6 +217,10 @@ async function syncProvider(inv) {
     } catch (e) { errs.push('falha ao gerar boleto: ' + e.message); store.addHistory(inv.cid, `Falha ao gerar boleto (${D.compLabel(inv.comp)}): ${e.message}`, 'sistema'); return errs; }
   }
   const needNF = inv.mode === 'now' || D.isPaid(inv);
+  if (needNF && !inv.nfRef && !nfAuto) {
+    if (inv.nf !== 'manual') { inv.nf = 'manual'; store.updateInvoice(inv); }
+    return errs;
+  }
   if (needNF && !inv.nfRef) {
     try {
       const n = await provider.issueNF({ invoice: inv, client: c });
@@ -245,6 +249,16 @@ async function retryProvider(invId) {
   return inv;
 }
 
+/* NF emitida fora do sistema (enquanto a NF automática estiver desligada) */
+function markNfManual(invId, numero, user) {
+  const inv = store.getInvoice(invId); if (!inv) throw new HttpError(404, 'Cobrança não encontrada.');
+  if (inv.nf !== 'manual') bad('Esta cobrança não está aguardando NF manual.');
+  numero = String(numero || '').trim();
+  inv.nf = 'manual_ok'; inv.nfRef = 'manual:' + (numero || '-'); store.updateInvoice(inv);
+  store.addHistory(inv.cid, `NF ${numero ? 'nº ' + numero + ' ' : ''}emitida manualmente (${D.compLabel(inv.comp)})`, user);
+  return inv;
+}
+
 /* ---------- pagamentos ---------- */
 async function applyPayment(invId, valor, data, origem, user, ref) {
   valor = D.round2(D.parseNum(valor)); if (!(valor > 0)) bad('Informe um valor maior que zero.');
@@ -255,12 +269,12 @@ async function applyPayment(invId, valor, data, origem, user, ref) {
     if (ref && store.db.prepare('SELECT 1 FROM payments WHERE ref=?').get(ref)) { inv.duplicate = true; return; }
     store.db.prepare('INSERT INTO payments(invoice_id,valor,data,origem,ref,created_by) VALUES(?,?,?,?,?,?)').run(invId, valor, data, origem, ref || null, user);
     inv.pago = D.round2(inv.pago + valor); inv.pagoEm = data;
-    if (inv.mode === 'later' && !['emitida_pos', 'erro'].includes(inv.nf)) inv.nf = D.nfState('later', inv.valor, inv.pago);
+    if (inv.mode === 'later' && !['emitida_pos', 'erro', 'manual', 'manual_ok'].includes(inv.nf)) inv.nf = D.nfState('later', inv.valor, inv.pago);
     store.updateInvoice(inv);
     store.addHistory(inv.cid, `Pagamento ${D.brl(valor)} em ${D.dBR(data)} (${origem}) — ${D.compLabel(inv.comp)}`, user);
   })();
   if (inv.duplicate) return inv;
-  if (inv.mode === 'later' && D.isPaid(inv) && !inv.nfRef) await syncProvider(inv);
+  if (inv.mode === 'later' && D.isPaid(inv) && !inv.nfRef && inv.nf !== 'manual_ok') await syncProvider(inv);
   return inv;
 }
 async function sendReminder(invId, user) {
@@ -429,6 +443,6 @@ function payPayable(id) {
 
 module.exports = {
   HttpError, sanitizeClient, diffClient, createClient, updateClient, setMode, ownTable,
-  sendTrialNotice, sendBilling, applyPayment, sendReminder, asaasWebhook, retryProvider,
+  sendTrialNotice, sendBilling, applyPayment, sendReminder, asaasWebhook, retryProvider, markNfManual,
   parseStatement, importStatement, linkBankEntry, applyImport, addPayable, payPayable
 };

@@ -19,7 +19,7 @@
   const CENTROS = ['Custo do serviço', 'Administrativo', 'Comercial', 'Capex'];
   const REPORT_TYPES = ['Posição de recebimentos', 'Inadimplência', 'NFs pendentes pós-pagamento', 'Fechamento de competência', 'Testes terminando', 'Movimentação de dispositivos', 'Contas a pagar'];
   const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-  const NFTXT = { emitida: ['Emitida na cobrança', 'mt'], emitida_pos: ['Emitida após pgto', 'ok'], aguardando: ['Aguardando pgto', 'warn'], retida: ['Retida — pgto parcial', 'warn'], erro: ['Erro na emissão', 'bad'] };
+  const NFTXT = { emitida: ['Emitida na cobrança', 'mt'], emitida_pos: ['Emitida após pgto', 'ok'], aguardando: ['Aguardando pgto', 'warn'], retida: ['Retida — pgto parcial', 'warn'], erro: ['Erro na emissão', 'bad'], manual: ['Emitir NF manualmente', 'warn'], manual_ok: ['Emitida (manual)', 'ok'] };
 
   /* ---------- números e datas ---------- */
   const clone = o => JSON.parse(JSON.stringify(o));
@@ -193,7 +193,7 @@
     if (tipo === 'Inadimplência')
       return [['cliente', 'competência', 'vencimento', 'em aberto', 'dias de atraso'], ...S.invoices.filter(i => !isPaid(i) && daysLate(i) > 0).map(i => [nm(i.cid), compLabel(i.comp), dBR(i.venc), nf2(i.valor - i.pago), daysLate(i)])];
     if (tipo === 'NFs pendentes pós-pagamento')
-      return [['cliente', 'situação da NF', 'cobrado', 'recebido'], ...S.invoices.filter(i => ['aguardando', 'retida', 'erro'].includes(i.nf)).map(i => [nm(i.cid), NFTXT[i.nf][0], nf2(i.valor), nf2(i.pago)])];
+      return [['cliente', 'situação da NF', 'cobrado', 'recebido'], ...S.invoices.filter(i => ['aguardando', 'retida', 'erro', 'manual'].includes(i.nf)).map(i => [nm(i.cid), NFTXT[i.nf][0], nf2(i.valor), nf2(i.pago)])];
     if (tipo === 'Testes terminando')
       return [['cliente', 'fim do teste', 'dias restantes', 'e-mail de aviso', 'ao terminar', 'dispositivos'], ...S.clients.filter(c => c.status === 'teste' && c.trial).map(c => [c.name, dBR(c.trial.fim), trialInfo(c).rest, c.trial.email, c.trial.aoFim === 'cobrar' ? 'Começa a cobrar' : 'Suspende', calc(S, c).devices])];
     if (tipo === 'Movimentação de dispositivos')
