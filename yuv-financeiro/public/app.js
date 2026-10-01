@@ -76,9 +76,28 @@ function showLogin() {
   });
 }
 function paintFoot() {
-  const sim = [ME.mail === 'simulado' ? 'e-mail' : '', ME.provider === 'simulado' ? 'boleto' : '', ME.sandbox ? 'Asaas sandbox' : ''].filter(Boolean);
-  $('#foot').innerHTML = `Conectado como <strong>${esc(ME.name)}</strong><br>${sim.length ? `<span style="color:#F3C77A">Modo simulado: ${sim.join(' e ')}.</span><br>` : ''}${ME.nfAuto ? '' : '<span style="color:#9FB3B0">NF automática desligada.</span><br>'}<button id="logout">Sair</button>`;
+  const sim = [ME.mail === 'simulado' ? 'e-mail simulado' : '', ME.provider === 'simulado' ? 'boleto simulado' : '', ME.sandbox ? 'Asaas em sandbox' : ''].filter(Boolean);
+  $('#foot').innerHTML = `Conectado como <strong>${esc(ME.name)}</strong><br>${sim.length ? `<span style="color:#F3C77A">Modo de teste: ${sim.join(', ')}.</span><br>` : ''}${ME.nfAuto ? '' : '<span style="color:#9FB3B0">NF automática desligada.</span><br>'}${ME.provider === 'asaas' ? '<button id="integ">Integração Asaas</button><br>' : ''}<button id="logout">Sair</button>`;
+  const ig = $('#integ'); if (ig) ig.addEventListener('click', integracao);
   $('#logout').addEventListener('click', async () => { await api('POST', '/logout').catch(() => {}); S = null; $('#view').innerHTML = ''; showLogin(); });
+}
+
+async function integracao() {
+  modal('<h2>Integração Asaas</h2><div class="hint">Conferindo…</div>');
+  let r; try { r = await api('GET', '/provider/check'); } catch (e) { r = { ok: false, error: e.message }; }
+  const w = r.webhook;
+  modal(`<h2>Integração Asaas</h2>
+    <div class="ln"><span>Conexão</span>${r.ok ? `<span class="b ok">OK · ${esc(r.ambiente)}</span>` : `<span class="b bad">Falhou</span>`}</div>
+    ${r.ok ? '' : `<div class="err">${esc(r.error)}</div>`}
+    <div class="ln"><span>Endereço do sistema (APP_URL)</span><span class="num">${esc(r.appUrl || 'não definido')}</span></div>
+    <div class="ln"><span>Webhook de pagamentos</span>${w ? (w.enabled && !w.interrupted ? '<span class="b ok">Ativo</span>' : `<span class="b bad">${w.interrupted ? 'Fila interrompida' : 'Desativado'}</span>`) : '<span class="b warn">Não cadastrado</span>'}</div>
+    ${w && w.interrupted ? '<p class="hint" style="margin:0">A Asaas interrompe a fila depois de falhas seguidas. Reative em Integrações &gt; Webhooks na Asaas e clique em “Conferir pagamentos”.</p>' : ''}
+    <div id="ierr" class="err"></div>
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-x>Fechar</button><button class="btn" data-sy ${r.ok ? '' : 'disabled'}>Conferir pagamentos</button>${!w && r.ok ? '<button class="btn pri" data-wh>Cadastrar webhook</button>' : ''}</div>`, m => {
+    m.querySelector('[data-x]').addEventListener('click', closeModal);
+    m.querySelector('[data-sy]').addEventListener('click', async () => { const x = await act(() => api('POST', '/provider/sync'), r => `${r.conferidas} conferida(s), ${r.baixadas} baixa(s).`, $('#ierr')); if (x) closeModal(); });
+    const wh = m.querySelector('[data-wh]'); if (wh) wh.addEventListener('click', async () => { try { await api('POST', '/provider/webhook'); toast('Webhook cadastrado na Asaas.'); integracao(); } catch (e) { $('#ierr').textContent = e.message; } });
+  });
 }
 
 /* ===================== Roteamento ===================== */
@@ -557,7 +576,7 @@ function vConciliacao(el) {
   if (comps.length && (!fConc.comp || !comps.includes(fConc.comp))) fConc.comp = comps.find(c => S.invoices.some(i => i.comp === c && daysLate(i) > 0)) || comps[0];
   const head = `<header class="pg"><div><div class="sub">Importe o extrato do banco (OFX ou CSV) · baixa automática quando o valor bate</div><h1>Conciliação${comps.length ? ' de ' + compLabel(fConc.comp) : ''}</h1></div>
    <div class="row">${comps.length ? `<label class="fld" style="width:200px">Competência<select id="cc">${comps.map(c => `<option value="${c}" ${c === fConc.comp ? 'selected' : ''}>${compLabel(c)}</option>`).join('')}</select></label>
-   <label class="fld" style="width:220px">Cliente<input id="cq" value="${esc(fConc.q)}" placeholder="Filtrar por nome"></label>` : ''}<label class="btn" style="cursor:pointer">Importar extrato<input type="file" id="ofx" accept=".ofx,.csv,.txt" hidden></label>${comps.length ? '<button class="btn" data-exp>Exportar</button>' : ''}</div></header>`;
+   <label class="fld" style="width:220px">Cliente<input id="cq" value="${esc(fConc.q)}" placeholder="Filtrar por nome"></label>` : ''}${ME.provider === 'asaas' ? '<button class="btn" data-sync>Conferir na Asaas</button>' : ''}<label class="btn" style="cursor:pointer">Importar extrato<input type="file" id="ofx" accept=".ofx,.csv,.txt" hidden></label>${comps.length ? '<button class="btn" data-exp>Exportar</button>' : ''}</div></header>`;
   const unHtml = um.map(u => `<div class="alert d"><div><strong>Entrada não identificada:</strong> <span class="num">${brl(u.valor)}</span> em ${dBR(u.data)} — pagador “${esc(u.pagador || u.memo || '—')}”.</div><div class="row" style="align-items:center"><select class="inp sm" style="width:220px" data-ucli="${u.id}"><option value="">Escolha o cliente…</option>${S.clients.map(c => `<option value="${c.id}" ${c.id === u.sug ? 'selected' : ''}>${esc(c.name)}${c.id === u.sug ? ' (sugestão)' : ''}</option>`).join('')}</select><button class="btn sm" data-ign="${u.id}">Descartar</button><button class="btn pri sm" data-lnk="${u.id}">Confirmar vínculo</button></div></div>`).join('');
   if (!comps.length) {
     el.innerHTML = head + unHtml + '<div class="card pad hint">Nenhuma cobrança emitida ainda. Elas aparecem aqui depois do envio em “Cobrança do mês”.</div>';
@@ -584,12 +603,18 @@ function vConciliacao(el) {
     <td style="font-weight:600">${esc(c?.name || '—')}${i.boletoRef ? `<div class="sub num" style="font-weight:400">${i.boletoUrl ? `<a class="link" href="${esc(i.boletoUrl)}" target="_blank" rel="noopener">boleto</a>` : esc(i.boletoRef)}${i.nfUrl ? ` · <a class="link" href="${esc(i.nfUrl)}" target="_blank" rel="noopener">NF</a>` : ''}</div>` : ''}</td><td class="num">${dShort(i.venc)}</td><td class="r num">${nf2(i.valor)}</td><td class="num">${i.pagoEm ? dShort(i.pagoEm) : '—'}</td>
     <td class="r num">${i.pago ? nf2(i.pago) : '—'}</td><td class="r num" style="${dif < -0.005 ? 'color:var(--bf);font-weight:600' : 'color:var(--mut)'}">${dif < -0.005 ? '−' + nf2(-dif) : '—'}</td>
     <td><span class="b ${st[1]}">${st[0]}</span></td><td><span class="b ${nfx[1]}" ${i.nfRef ? `title="${esc(i.nfRef)}"` : ''}>${nfx[0]}</span></td>
-    <td class="r" style="white-space:nowrap">${!i.boletoRef || i.nf === 'erro' ? `<button class="btn sm pri" data-prov="${i.id}">Gerar ${!i.boletoRef ? 'boleto' : 'NF'}</button> ` : ''}${i.nf === 'manual' ? `<button class="btn sm" data-nfm="${i.id}">NF emitida</button> ` : ''}${!isPaid(i) ? `<button class="btn sm" data-pay="${i.id}">Registrar pagamento</button> ${daysLate(i) > 0 ? `<button class="btn sm" data-rem="${i.id}">Lembrete</button>` : ''}` : ''}</td></tr>`; }).join('') || '<tr><td colspan="9" class="hint" style="padding:24px">Nada nesta aba.</td></tr>'}</tbody>
+    <td class="r" style="white-space:nowrap">${!i.boletoRef || i.nf === 'erro' ? `<button class="btn sm pri" data-prov="${i.id}">Gerar ${!i.boletoRef ? 'boleto' : 'NF'}</button> ` : ''}${i.nf === 'manual' ? `<button class="btn sm" data-nfm="${i.id}">NF emitida</button> ` : ''}${!isPaid(i) ? `<button class="btn sm" data-pay="${i.id}">Registrar pagamento</button> ${daysLate(i) > 0 ? `<button class="btn sm" data-rem="${i.id}">Lembrete</button>` : ''}` : ''}${!i.pago ? ` <button class="link del" data-cancel="${i.id}">cancelar</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="9" class="hint" style="padding:24px">Nada nesta aba.</td></tr>'}</tbody>
   </table></div>`;
   $('#cc', el).addEventListener('change', e => { fConc.comp = e.target.value; vConciliacao(el); });
   $('#cq', el).addEventListener('input', e => { fConc.q = e.target.value; const p = e.target.selectionStart; vConciliacao(el); const i = $('#cq', el); i.focus(); i.setSelectionRange(p, p); });
   el.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { fConc.tab = b.dataset.tab; vConciliacao(el); }));
   el.querySelectorAll('[data-rem]').forEach(b => b.addEventListener('click', () => { const i = S.invoices.find(x => x.id === b.dataset.rem); act(() => api('POST', `/invoices/${i.id}/reminder`), r => `Lembrete enviado para ${client(i.cid).name}${simNote(r)}.`); }));
+  el.querySelectorAll('[data-cancel]').forEach(b => b.addEventListener('click', () => {
+    const i = S.invoices.find(x => x.id === b.dataset.cancel), c = client(i.cid);
+    const why = prompt(`Cancelar a cobrança de ${c.name} (${compLabel(i.comp)}, ${brl(i.valor)})?${i.boletoRef ? ' O boleto também será cancelado na Asaas.' : ''}\n\nMotivo:`);
+    if (why === null) return; if (!why.trim()) { toast('Informe o motivo.'); return; }
+    act(() => api('POST', `/invoices/${i.id}/cancel`, { why }), 'Cobrança cancelada. Você pode corrigir o cliente e enviar de novo em “Cobrança do mês”.');
+  }));
   el.querySelectorAll('[data-nfm]').forEach(b => b.addEventListener('click', () => { const n = prompt('Número da NF emitida (opcional)'); if (n === null) return; act(() => api('POST', `/invoices/${b.dataset.nfm}/nf-manual`, { numero: n }), 'NF marcada como emitida.'); }));
   el.querySelectorAll('[data-prov]').forEach(b => b.addEventListener('click', () => act(() => api('POST', `/invoices/${b.dataset.prov}/provider`), 'Boleto/NF gerados.')));
   el.querySelectorAll('[data-pay]').forEach(b => b.addEventListener('click', () => registrarPg(S.invoices.find(x => x.id === b.dataset.pay))));
@@ -597,6 +622,7 @@ function vConciliacao(el) {
   bindBank(el);
 }
 function bindBank(el) {
+  const sy = el.querySelector('[data-sync]'); if (sy) sy.addEventListener('click', () => act(() => api('POST', '/provider/sync'), r => `Asaas: ${r.conferidas} cobrança(s) conferida(s), ${r.baixadas} baixa(s)${r.erros.length ? `, ${r.erros.length} erro(s): ${r.erros[0]}` : ''}.`));
   const f = $('#ofx', el); if (f) f.addEventListener('change', () => {
     const file = f.files[0]; if (!file) return; const fd = new FormData(); fd.append('file', file);
     act(() => api('POST', '/bank/import', fd), r => `Extrato: ${r.novos} entrada(s) nova(s) — ${r.baixados} baixada(s) automaticamente, ${r.pendentes} para revisar${r.repetidos ? `, ${r.repetidos} já importada(s)` : ''}.`);

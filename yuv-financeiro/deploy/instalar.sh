@@ -38,9 +38,10 @@ if [ ! -f .env ]; then
     [ ${#ADM_PASS} -ge 8 ] && [[ "$ADM_PASS" != *'"'* ]] && break
     echo "   Senha inválida, tente de novo."
   done
-  grep -vE '^(PORT|DATA_DIR|ADMIN_EMAIL|ADMIN_PASSWORD|WEBHOOK_SECRET|ASAAS_WEBHOOK_TOKEN)=' .env.example > .env
+  grep -vE '^(PORT|APP_URL|DATA_DIR|ADMIN_EMAIL|ADMIN_PASSWORD|WEBHOOK_SECRET|ASAAS_WEBHOOK_TOKEN)=' .env.example > .env
   {
     echo "PORT=$PORTA"
+    echo "APP_URL=https://$DOMINIO"
     echo "DATA_DIR=$APP_DIR/data"
     echo "ADMIN_EMAIL=$ADM_EMAIL"
     printf 'ADMIN_PASSWORD="%s"\n' "$ADM_PASS"
@@ -85,5 +86,5 @@ echo
 echo "Pronto: https://$DOMINIO"
 echo "Agora edite $APP_DIR/.env: BILLING_PROVIDER=asaas, ASAAS_API_KEY (sandbox primeiro) e SMTP_URL."
 echo "Depois: pm2 restart yuv-financeiro --update-env"
-echo "Webhook da Asaas: https://$DOMINIO/api/webhooks/asaas"
-echo "Token do webhook (cole na Asaas): $(grep ^ASAAS_WEBHOOK_TOKEN= .env | cut -d= -f2)"
+echo "Depois, no sistema: menu lateral > Integração Asaas > Cadastrar webhook (ou cadastre à mão:"
+echo "  URL https://$DOMINIO/api/webhooks/asaas, token $(grep ^ASAAS_WEBHOOK_TOKEN= .env | cut -d= -f2))"

@@ -13,7 +13,9 @@ const simulado = {
   },
   async issueNF() {
     return { ref: 'SIM-NF-' + crypto.randomBytes(4).toString('hex').toUpperCase() };
-  }
+  },
+  async cancelCharge() {},
+  async getCharge() { return null; }
 };
 
 /* ---------------- Asaas (API v3) ---------------- */
@@ -51,7 +53,7 @@ function makeAsaas(cfg = asaasConfig(), fetchImpl = (...a) => fetch(...a)) {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
-      const msg = (data.errors || []).map(e => e.description).join('; ') || `HTTP ${r.status}`;
+      const msg = (data.errors || []).map(e => e.description).join('; ') || (r.status === 401 ? 'chave de API inválida ou de outro ambiente (sandbox × produção)' : `HTTP ${r.status}`);
       throw new Error('Asaas: ' + msg);
     }
     return data;
@@ -85,6 +87,13 @@ function makeAsaas(cfg = asaasConfig(), fetchImpl = (...a) => fetch(...a)) {
       if (rules.includes('pontualidade')) body.discount = { value: cfg.pontualidade, dueDateLimitDays: 0, type: 'PERCENTAGE' };
       const p = await call('POST', '/payments', body);
       return { ref: p.id, url: p.invoiceUrl || p.bankSlipUrl || null, customerId: customer };
+    },
+    async cancelCharge(ref) { await call('DELETE', `/payments/${encodeURIComponent(ref)}`); },
+    async getCharge(ref) { return call('GET', `/payments/${encodeURIComponent(ref)}`); },
+    async check() { await call('GET', '/customers?limit=1'); return { ok: true, ambiente: cfg.sandbox ? 'sandbox' : 'produção' }; },
+    async listWebhooks() { const r = await call('GET', '/webhooks'); return r.data || []; },
+    async createWebhook({ url, email, authToken, events }) {
+      return call('POST', '/webhooks', { name: 'YUV Financeiro', url, email, enabled: true, interrupted: false, apiVersion: 3, authToken, sendType: 'SEQUENTIALLY', events });
     },
     async issueNF({ invoice }) {
       if (!invoice.boletoRef) throw new Error('cobrança sem boleto na Asaas — não dá para emitir a NF vinculada');

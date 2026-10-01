@@ -37,6 +37,12 @@ O que o sistema faz:
 - "Só boleto": a NFS-e sai quando o pagamento quita a cobrança.
 - Webhook `PAYMENT_RECEIVED`/`PAYMENT_CONFIRMED` dá baixa (sem duplicar), `INVOICE_AUTHORIZED` guarda o link do PDF,
   `INVOICE_ERROR` e estornos aparecem no histórico do cliente.
+- **Conferência automática** a cada 6 horas (e no botão "Conferir na Asaas"): consulta as cobranças em aberto
+  e dá baixa nas pagas — cobre webhook perdido ou fila de webhook interrompida.
+- **Cancelar cobrança** (link "cancelar" na Conciliação, só sem pagamento): cancela o boleto na Asaas, apaga a
+  cobrança, devolve os ajustes ao cliente e libera reenviar a competência. Motivo fica no histórico.
+- Menu lateral > **Integração Asaas**: testa a chave, mostra se o webhook está ativo e cadastra o webhook
+  automaticamente (usa `APP_URL` e `ASAAS_WEBHOOK_TOKEN`).
 - Falhou boleto ou NF? A cobrança fica registrada, aparece "Gerar boleto/NF" na Conciliação e o e-mail
   só é enviado quando o boleto existir.
 
@@ -58,8 +64,9 @@ mude para `NF_AUTOMATICA=1` e reinicie; as cobranças antigas marcadas como manu
    com `ASAAS_ENV=sandbox` e `BILLING_PROVIDER=asaas`.
 2. (Só quando for ligar a NF) Configure as notas fiscais na Asaas e, com a contabilidade, preencha
    `ASAAS_NF_SERVICO_ID` (ou código + nome), as alíquotas `ASAAS_NF_*` e `NF_AUTOMATICA=1`.
-3. Na Asaas, em Integrações > Webhooks, cadastre `https://SEU-DOMINIO/api/webhooks/asaas`, com o token
-   de `ASAAS_WEBHOOK_TOKEN` e os eventos de cobrança (e de nota fiscal, quando ligar a NF).
+3. No sistema, menu lateral > **Integração Asaas** > **Cadastrar webhook** (a conexão precisa aparecer "OK").
+   Se preferir à mão: Asaas > Integrações > Webhooks, URL `https://SEU-DOMINIO/api/webhooks/asaas`,
+   token = `ASAAS_WEBHOOK_TOKEN`, eventos de cobrança.
 4. Reinicie (`pm2 restart yuv-financeiro --update-env`), cadastre 1 cliente de teste com CNPJ válido,
    envie a cobrança, pague no sandbox e confira: link do boleto na Conciliação, e-mail com o link e baixa automática.
 5. Só então troque para `ASAAS_ENV=production` com a chave de produção.

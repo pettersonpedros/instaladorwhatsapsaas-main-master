@@ -136,6 +136,28 @@ function build() {
 
   /* ---- conciliação ---- */
   api.post('/invoices/:id/payments', async (req, res) => res.json(await svc.applyPayment(req.params.id, req.body.valor, req.body.data, 'manual', who(req))));
+  api.post('/invoices/:id/cancel', async (req, res) => res.json(await svc.cancelInvoice(req.params.id, req.body.why, who(req))));
+  api.post('/provider/sync', async (req, res) => res.json(await svc.syncPayments(who(req))));
+  api.get('/provider/check', async (req, res) => {
+    if (!provider.check) return res.json({ ok: true, ambiente: 'simulado' });
+    const out = { appUrl: process.env.APP_URL || null };
+    try { Object.assign(out, await provider.check()); } catch (e) { return res.json({ ...out, ok: false, error: e.message }); }
+    const target = out.appUrl && out.appUrl.replace(/\/$/, '') + '/api/webhooks/asaas';
+    try { const w = (await provider.listWebhooks()).find(x => x.url === target); out.webhook = w ? { url: w.url, enabled: w.enabled, interrupted: w.interrupted } : null; }
+    catch (e) { out.webhookError = e.message; }
+    res.json(out);
+  });
+  api.post('/provider/webhook', async (req, res) => {
+    if (!provider.createWebhook) bad('Disponível só com BILLING_PROVIDER=asaas.');
+    const base = process.env.APP_URL; if (!base || !/^https:\/\//.test(base)) bad('Defina APP_URL=https://seu-dominio no .env (a Asaas exige HTTPS).');
+    const authToken = process.env.ASAAS_WEBHOOK_TOKEN; if (!authToken || authToken.length < 32) bad('Defina ASAAS_WEBHOOK_TOKEN com 32+ caracteres no .env.');
+    const url = base.replace(/\/$/, '') + '/api/webhooks/asaas';
+    if ((await provider.listWebhooks()).some(w => w.url === url)) return res.json({ ok: true, existente: true, url });
+    const events = ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED', 'PAYMENT_DELETED', 'PAYMENT_REFUNDED', 'PAYMENT_PARTIALLY_REFUNDED', 'PAYMENT_CHARGEBACK_REQUESTED']
+      .concat(nfAuto ? ['INVOICE_AUTHORIZED', 'INVOICE_ERROR', 'INVOICE_CANCELED'] : []);
+    await provider.createWebhook({ url, email: store.state({ history: false }).cfg.emailFinanceiro, authToken, events });
+    res.json({ ok: true, url });
+  });
   api.post('/invoices/:id/nf-manual', (req, res) => res.json(svc.markNfManual(req.params.id, req.body.numero, who(req))));
   api.post('/invoices/:id/provider', async (req, res) => res.json(await svc.retryProvider(req.params.id)));
   api.post('/invoices/:id/reminder', async (req, res) => res.json(await svc.sendReminder(req.params.id, who(req))));

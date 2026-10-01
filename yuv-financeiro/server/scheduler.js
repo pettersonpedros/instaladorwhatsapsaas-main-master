@@ -45,15 +45,24 @@ async function runTrials(now) {
   }
 }
 
+/* Confere na Asaas, a cada 6 horas, cobranças em aberto (caso um webhook se perca) */
+async function runSync(now) {
+  const { provider } = require('./providers');
+  if (!provider.getCharge || provider.name === 'simulado') return;
+  if (!store.claimJob(`asaas-sync:${D.isoOf(now)}:${Math.floor(now.getHours() / 6)}`)) return;
+  const r = await svc.syncPayments('sistema');
+  if (r.baixadas || r.erros.length) console.log(`[agenda] conferência Asaas: ${r.baixadas} baixa(s), ${r.erros.length} erro(s)`);
+}
+
 let timer = null, running = false;
 async function tick() {
   if (running) return; running = true;
   const now = new Date();
-  try { await runReports(now); await runTrials(now); }
+  try { await runReports(now); await runTrials(now); await runSync(now); }
   catch (e) { console.error('[agenda]', e); }
   finally { running = false; }
 }
 function start() { if (timer) return; tick(); timer = setInterval(tick, 60e3); }
 function stop() { clearInterval(timer); timer = null; }
 
-module.exports = { start, stop, tick, runReports, runTrials };
+module.exports = { start, stop, tick, runReports, runTrials, runSync };

@@ -259,6 +259,51 @@ function markNfManual(invId, numero, user) {
   return inv;
 }
 
+/* ---------- cancelamento ----------
+   Só sem pagamento registrado. Cancela na Asaas, apaga a cobrança (liberando
+   reenviar a competência) e devolve os ajustes ao cliente. Fica no histórico. */
+const isRemoteRef = ref => !!ref && !/^(SIM-|DEMO-)/.test(ref);
+async function cancelInvoice(invId, why, user) {
+  why = String(why || '').trim(); if (!why) bad('Informe o motivo do cancelamento.');
+  const inv = store.getInvoice(invId); if (!inv) throw new HttpError(404, 'Cobrança não encontrada.');
+  if (inv.pago > 0) bad('Cobrança com pagamento registrado não pode ser cancelada aqui. Faça o estorno na Asaas.');
+  if (inv.nfRef && !/^manual/.test(inv.nfRef) && isRemoteRef(inv.nfRef)) bad('Esta cobrança já tem NF emitida. Cancele a NF na Asaas/prefeitura antes.');
+  if (isRemoteRef(inv.boletoRef)) {
+    try { await provider.cancelCharge(inv.boletoRef); }
+    catch (e) { throw new HttpError(502, 'A Asaas recusou o cancelamento: ' + e.message); }
+  }
+  store.tx(() => {
+    store.db.prepare('UPDATE bank_entries SET invoice_id=NULL WHERE invoice_id=?').run(invId);
+    store.db.prepare('DELETE FROM payments WHERE invoice_id=?').run(invId);
+    store.db.prepare('DELETE FROM invoices WHERE id=?').run(invId);
+    const c = store.getClient(inv.cid);
+    const aj = (inv.items || []).filter(x => x.tipo === 'aj').map(x => ({ desc: x.nome, valor: x.valor }));
+    if (aj.length) { c.ajustes = aj.concat(c.ajustes || []); store.saveClient(c); }
+    store.addHistory(inv.cid, `Cobrança ${D.compLabel(inv.comp)} de ${D.brl(inv.valor)} cancelada${inv.boletoRef ? ` (boleto ${inv.boletoRef})` : ''}${aj.length ? ' — ajustes voltaram para a próxima cobrança' : ''}`, user, why);
+  })();
+  return { ok: true };
+}
+
+/* ---------- conferência com a Asaas (plano B do webhook) ---------- */
+const PAGO_ASAAS = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'];
+async function syncPayments(who = 'sistema') {
+  if (!provider.getCharge) return { conferidas: 0, baixadas: 0 };
+  const open = store.listInvoices().filter(i => !D.isPaid(i) && isRemoteRef(i.boletoRef));
+  let baixadas = 0, avisos = 0; const erros = [];
+  for (const inv of open) {
+    let p;
+    try { p = await provider.getCharge(inv.boletoRef); } catch (e) { erros.push(`${inv.boletoRef}: ${e.message}`); continue; }
+    if (!p) continue;
+    if (PAGO_ASAAS.includes(p.status)) {
+      const r = await applyPayment(inv.id, p.value, p.clientPaymentDate || p.paymentDate || D.todayISO(), 'Asaas (conferência)', who, 'asaas:' + p.id);
+      if (!r.duplicate) baixadas++;
+    } else if (p.deleted && store.claimJob('asaas-deleted:' + p.id)) {
+      store.addHistory(inv.cid, `Boleto ${p.id} (${D.compLabel(inv.comp)}) foi removido na Asaas, mas a cobrança segue aberta aqui — cancele ou gere outro boleto`, 'Asaas'); avisos++;
+    }
+  }
+  return { conferidas: open.length, baixadas, avisos, erros };
+}
+
 /* ---------- pagamentos ---------- */
 async function applyPayment(invId, valor, data, origem, user, ref) {
   valor = D.round2(D.parseNum(valor)); if (!(valor > 0)) bad('Informe um valor maior que zero.');
@@ -443,6 +488,6 @@ function payPayable(id) {
 
 module.exports = {
   HttpError, sanitizeClient, diffClient, createClient, updateClient, setMode, ownTable,
-  sendTrialNotice, sendBilling, applyPayment, sendReminder, asaasWebhook, retryProvider, markNfManual,
+  sendTrialNotice, sendBilling, applyPayment, sendReminder, asaasWebhook, retryProvider, markNfManual, cancelInvoice, syncPayments,
   parseStatement, importStatement, linkBankEntry, applyImport, addPayable, payPayable
 };
