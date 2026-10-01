@@ -8,7 +8,7 @@ const store = require('./db');
 const auth = require('./auth');
 const svc = require('./services');
 const mailer = require('./mailer');
-const { simulated } = require('./providers');
+const { simulated, provider } = require('./providers');
 const { HttpError } = svc;
 
 const UPLOADS = path.join(store.DATA_DIR, 'anexos');
@@ -30,6 +30,7 @@ function sanitizeVersion(d) {
   const e = D.validTableVersion(v); if (e) bad(e);
   return v;
 }
+const safeEq = (got, secret) => { got = String(got || ''); return !!secret && got.length === secret.length && crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret)); };
 const csv = (res, name, rows) => { res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', `attachment; filename="${name}"`); res.send(D.toCSV(rows)); };
 
 function build() {
@@ -48,20 +49,21 @@ function build() {
 
   /* Baixa automática vinda do provedor de boleto (protegida por segredo) */
   api.post('/webhooks/payment', async (req, res) => {
-    const secret = process.env.WEBHOOK_SECRET;
-    const got = String(req.headers['x-webhook-secret'] || '');
-    if (!secret || got.length !== secret.length || !crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret))) return res.status(401).json({ error: 'não autorizado' });
+    if (!safeEq(req.headers['x-webhook-secret'], process.env.WEBHOOK_SECRET)) return res.status(401).json({ error: 'não autorizado' });
     const { invoiceId, boletoRef, valor, data } = req.body || {};
     const inv = invoiceId ? store.getInvoice(invoiceId) : store.listInvoices().find(i => i.boletoRef && i.boletoRef === boletoRef);
     if (!inv) return res.status(404).json({ error: 'cobrança não encontrada' });
-    const ref = req.body.paymentId || null;
-    if (ref && store.db.prepare('SELECT 1 FROM payments WHERE ref=?').get(ref)) return res.json({ ok: true, duplicate: true });
-    await svc.applyPayment(inv.id, valor, data, 'webhook', 'provedor', ref);
-    res.json({ ok: true });
+    const r = await svc.applyPayment(inv.id, valor, data, 'webhook', 'provedor', req.body.paymentId || null);
+    res.json({ ok: true, duplicate: !!r.duplicate });
+  });
+  api.post('/webhooks/asaas', async (req, res) => {
+    if (!safeEq(req.headers['asaas-access-token'], process.env.ASAAS_WEBHOOK_TOKEN)) return res.status(401).json({ error: 'não autorizado' });
+    try { res.json(await svc.asaasWebhook(req.body)); }
+    catch (e) { console.error('[asaas webhook]', e.message); res.json({ ignored: e.message }); }
   });
 
   api.use(auth.requireAuth);
-  api.get('/me', (req, res) => res.json({ ...req.user, mail: mailer.enabled ? 'smtp' : 'simulado', provider: simulated ? 'simulado' : 'real' }));
+  api.get('/me', (req, res) => res.json({ ...req.user, mail: mailer.enabled ? 'smtp' : 'simulado', provider: simulated ? 'simulado' : provider.name, sandbox: !!(provider.config && provider.config.sandbox) }));
   api.get('/state', (req, res) => res.json(store.state()));
 
   /* ---- clientes ---- */
@@ -134,6 +136,7 @@ function build() {
 
   /* ---- conciliação ---- */
   api.post('/invoices/:id/payments', async (req, res) => res.json(await svc.applyPayment(req.params.id, req.body.valor, req.body.data, 'manual', who(req))));
+  api.post('/invoices/:id/provider', async (req, res) => res.json(await svc.retryProvider(req.params.id)));
   api.post('/invoices/:id/reminder', async (req, res) => res.json(await svc.sendReminder(req.params.id, who(req))));
   api.post('/bank/import', memUpload.single('file'), async (req, res) => {
     if (!req.file) bad('Envie o arquivo do extrato (.ofx ou .csv).');

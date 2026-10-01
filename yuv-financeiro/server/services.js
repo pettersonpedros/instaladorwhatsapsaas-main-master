@@ -63,6 +63,8 @@ function sanitizeClient(input, existing, S) {
       enviados: prev && prev.fim === fim ? prev.enviados || [] : []
     };
   }
+  // id do cliente na Asaas: mantém, a menos que o CNPJ mude
+  c.asaasId = existing && D.onlyDigits(existing.cnpj) === D.onlyDigits(c.cnpj) ? existing.asaasId || null : null;
   c.delta = existing ? (existing.delta || 0) + devicesOf(c) - devicesOf(existing) : devicesOf(c);
   return c;
 }
@@ -192,17 +194,55 @@ async function sendBilling(comp, ids, user) {
       errors.push(`${c.name}: ${/UNIQUE/.test(e.message) ? 'cobrança desta competência já existe' : e.message}`); continue;
     }
     // integrações fora da transação: a cobrança já está registrada e não duplica
-    try {
-      const b = await provider.createCharge({ invoice: inv, client: c }); inv.boletoRef = b.ref; inv.boletoUrl = b.url;
-      if (c.mode === 'now') { const n = await provider.issueNF({ invoice: inv, client: c }); inv.nfRef = n.ref; }
-      store.updateInvoice(inv);
-    } catch (e) { errors.push(`${c.name}: cobrança registrada, mas falhou no provedor de boleto/NF (${e.message})`); store.addHistory(c.id, 'Falha no provedor de boleto/NF: ' + e.message, 'sistema'); }
-    if (c.email) { const m = chargeMail(S, c, inv, k, P); const r = await mailer.send({ to: c.email, subject: m.subject, text: m.text }); if (!r.ok) errors.push(`${c.name}: e-mail não enviado (${r.error})`); }
+    const perr = await syncProvider(inv);
+    perr.forEach(e => errors.push(`${c.name}: ${e}`));
+    if (!inv.boletoRef) errors.push(`${c.name}: e-mail não enviado porque o boleto não foi gerado — use "Gerar boleto/NF" na Conciliação`);
+    else if (c.email) await sendChargeMail(inv, errors);
     else errors.push(`${c.name}: sem e-mail financeiro — cobrança registrada, envie manualmente`);
     created.push(inv);
   }
   if (created.length) { const sent = store.getSetting('sentComp', []); if (!sent.includes(comp)) store.setSetting('sentComp', sent.concat(comp)); }
   return { created: created.length, total: D.round2(created.reduce((s, i) => s + i.valor, 0)), nfNow: created.filter(i => i.mode === 'now').length, errors };
+}
+
+/* Gera o que falta no provedor (boleto e, quando cabe, a NF). Devolve a lista de erros. */
+async function syncProvider(inv) {
+  const errs = [];
+  const c = store.getClient(inv.cid);
+  if (!inv.boletoRef) {
+    try {
+      const b = await provider.createCharge({ invoice: inv, client: c });
+      inv.boletoRef = b.ref; inv.boletoUrl = b.url; store.updateInvoice(inv);
+      if (b.customerId && b.customerId !== c.asaasId) { c.asaasId = b.customerId; store.saveClient(c); }
+    } catch (e) { errs.push('falha ao gerar boleto: ' + e.message); store.addHistory(inv.cid, `Falha ao gerar boleto (${D.compLabel(inv.comp)}): ${e.message}`, 'sistema'); return errs; }
+  }
+  const needNF = inv.mode === 'now' || D.isPaid(inv);
+  if (needNF && !inv.nfRef) {
+    try {
+      const n = await provider.issueNF({ invoice: inv, client: c });
+      inv.nfRef = n.ref; inv.nf = inv.mode === 'now' ? 'emitida' : 'emitida_pos'; store.updateInvoice(inv);
+      if (inv.mode === 'later') store.addHistory(inv.cid, `NF emitida após pagamento (${n.ref})`, 'sistema');
+    } catch (e) { inv.nf = 'erro'; store.updateInvoice(inv); errs.push('falha ao emitir NF: ' + e.message); store.addHistory(inv.cid, `Falha ao emitir NF (${D.compLabel(inv.comp)}): ${e.message}`, 'sistema'); }
+  }
+  return errs;
+}
+async function sendChargeMail(inv, errors) {
+  const S = store.state({ history: false });
+  const c = S.clients.find(x => x.id === inv.cid);
+  if (!c.email) return;
+  const k = { ...D.calc(S, c), items: inv.items.filter(x => x.tipo !== 'aj') };
+  const m = chargeMail(S, { ...c, ajustes: inv.items.filter(x => x.tipo === 'aj').map(x => ({ desc: x.nome, valor: x.valor })) }, inv, k, D.periodo(S.cfg, inv.comp));
+  const r = await mailer.send({ to: c.email, subject: m.subject, text: m.text });
+  if (!r.ok && errors) errors.push(`${c.name}: e-mail não enviado (${r.error})`);
+}
+/* Botão "Gerar boleto/NF": refaz o que falhou no provedor */
+async function retryProvider(invId) {
+  const inv = store.getInvoice(invId); if (!inv) throw new HttpError(404, 'Cobrança não encontrada.');
+  const hadBoleto = !!inv.boletoRef;
+  const errs = await syncProvider(inv);
+  if (errs.length) throw new HttpError(502, errs.join('; '));
+  if (!hadBoleto) await sendChargeMail(inv);
+  return inv;
 }
 
 /* ---------- pagamentos ---------- */
@@ -212,16 +252,15 @@ async function applyPayment(invId, valor, data, origem, user, ref) {
   let inv;
   store.tx(() => {
     inv = store.getInvoice(invId); if (!inv) throw new HttpError(404, 'Cobrança não encontrada.');
+    if (ref && store.db.prepare('SELECT 1 FROM payments WHERE ref=?').get(ref)) { inv.duplicate = true; return; }
     store.db.prepare('INSERT INTO payments(invoice_id,valor,data,origem,ref,created_by) VALUES(?,?,?,?,?,?)').run(invId, valor, data, origem, ref || null, user);
     inv.pago = D.round2(inv.pago + valor); inv.pagoEm = data;
-    inv.nf = inv.mode === 'later' ? (inv.nf === 'emitida_pos' ? 'emitida_pos' : D.nfState('later', inv.valor, inv.pago)) : inv.nf;
+    if (inv.mode === 'later' && !['emitida_pos', 'erro'].includes(inv.nf)) inv.nf = D.nfState('later', inv.valor, inv.pago);
     store.updateInvoice(inv);
     store.addHistory(inv.cid, `Pagamento ${D.brl(valor)} em ${D.dBR(data)} (${origem}) — ${D.compLabel(inv.comp)}`, user);
   })();
-  if (inv.nf === 'emitida_pos' && !inv.nfRef) {
-    try { const n = await provider.issueNF({ invoice: inv, client: store.getClient(inv.cid) }); inv.nfRef = n.ref; store.updateInvoice(inv); store.addHistory(inv.cid, `NF emitida após pagamento (${n.ref})`, 'sistema'); }
-    catch (e) { store.addHistory(inv.cid, 'Falha ao emitir NF após pagamento: ' + e.message, 'sistema'); }
-  }
+  if (inv.duplicate) return inv;
+  if (inv.mode === 'later' && D.isPaid(inv) && !inv.nfRef) await syncProvider(inv);
   return inv;
 }
 async function sendReminder(invId, user) {
@@ -234,6 +273,35 @@ async function sendReminder(invId, user) {
   if (!r.ok) throw new HttpError(502, 'Falha ao enviar e-mail: ' + r.error);
   store.addHistory(c.id, `Lembrete de pagamento enviado (${D.compLabel(inv.comp)})${r.simulated ? ' (simulado)' : ''}`, user);
   return r;
+}
+
+/* ---------- webhook da Asaas ----------
+   Sempre responde 200 para eventos que não interessam ou não acham a cobrança:
+   a Asaas pausa a fila de webhooks quando o endpoint devolve erro. */
+async function asaasWebhook(body) {
+  const ev = body && body.event;
+  if (ev === 'PAYMENT_RECEIVED' || ev === 'PAYMENT_CONFIRMED') {
+    const p = body.payment || {};
+    const inv = (p.id && store.db.prepare('SELECT id FROM invoices WHERE boleto_ref=?').get(p.id)) || (p.externalReference && store.getInvoice(p.externalReference));
+    if (!inv) return { ignored: 'cobrança não encontrada' };
+    const data = p.clientPaymentDate || p.paymentDate || D.todayISO();
+    const r = await applyPayment(inv.id, p.value, data, 'Asaas', 'Asaas', 'asaas:' + p.id);
+    return { ok: true, duplicate: !!r.duplicate };
+  }
+  if (/^PAYMENT_(DELETED|REFUNDED|PARTIALLY_REFUNDED|CHARGEBACK_REQUESTED)$/.test(ev || '')) {
+    const p = body.payment || {}; const inv = p.id && store.db.prepare('SELECT * FROM invoices WHERE boleto_ref=?').get(p.id);
+    if (inv) store.addHistory(inv.cid, `Asaas: ${ev} na cobrança ${D.compLabel(inv.comp)} — confira manualmente`, 'Asaas');
+    return { ok: true };
+  }
+  if (ev === 'INVOICE_AUTHORIZED' || ev === 'INVOICE_ERROR' || ev === 'INVOICE_CANCELED') {
+    const n = body.invoice || {}; const row = n.id && store.db.prepare('SELECT id FROM invoices WHERE nf_ref=?').get(n.id);
+    if (!row) return { ignored: 'NF não encontrada' };
+    const inv = store.getInvoice(row.id);
+    if (ev === 'INVOICE_AUTHORIZED') { inv.nfUrl = n.pdfUrl || null; store.updateInvoice(inv); store.addHistory(inv.cid, `NF ${n.number ? 'nº ' + n.number + ' ' : ''}autorizada (${D.compLabel(inv.comp)})`, 'Asaas'); }
+    else store.addHistory(inv.cid, `NF ${ev === 'INVOICE_ERROR' ? 'com erro' : 'cancelada'} na prefeitura (${D.compLabel(inv.comp)})${n.statusDescription ? ': ' + n.statusDescription : ''}`, 'Asaas');
+    return { ok: true };
+  }
+  return { ignored: ev || 'sem evento' };
 }
 
 /* ---------- extrato bancário (OFX ou CSV) ---------- */
@@ -361,6 +429,6 @@ function payPayable(id) {
 
 module.exports = {
   HttpError, sanitizeClient, diffClient, createClient, updateClient, setMode, ownTable,
-  sendTrialNotice, sendBilling, applyPayment, sendReminder,
+  sendTrialNotice, sendBilling, applyPayment, sendReminder, asaasWebhook, retryProvider,
   parseStatement, importStatement, linkBankEntry, applyImport, addPayable, payPayable
 };

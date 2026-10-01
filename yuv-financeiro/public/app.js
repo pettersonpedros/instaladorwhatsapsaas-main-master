@@ -76,7 +76,7 @@ function showLogin() {
   });
 }
 function paintFoot() {
-  const sim = [ME.mail === 'simulado' ? 'e-mail' : '', ME.provider === 'simulado' ? 'boleto/NF' : ''].filter(Boolean);
+  const sim = [ME.mail === 'simulado' ? 'e-mail' : '', ME.provider === 'simulado' ? 'boleto/NF' : '', ME.sandbox ? 'Asaas sandbox' : ''].filter(Boolean);
   $('#foot').innerHTML = `Conectado como <strong>${esc(ME.name)}</strong><br>${sim.length ? `<span style="color:#F3C77A">Modo simulado: ${sim.join(' e ')}.</span><br>` : ''}<button id="logout">Sair</button>`;
   $('#logout').addEventListener('click', async () => { await api('POST', '/logout').catch(() => {}); S = null; $('#view').innerHTML = ''; showLogin(); });
 }
@@ -554,7 +554,8 @@ let fConc = { tab: 'todos', q: '', comp: null };
 function vConciliacao(el) {
   const comps = [...new Set(S.invoices.map(i => i.comp))].sort().reverse();
   const um = S.unmatched;
-  const head = `<header class="pg"><div><div class="sub">Importe o extrato do banco (OFX ou CSV) · baixa automática quando o valor bate</div><h1>Conciliação${comps.length ? ' de ' + compLabel(fConc.comp || comps[0]) : ''}</h1></div>
+  if (comps.length && (!fConc.comp || !comps.includes(fConc.comp))) fConc.comp = comps.find(c => S.invoices.some(i => i.comp === c && daysLate(i) > 0)) || comps[0];
+  const head = `<header class="pg"><div><div class="sub">Importe o extrato do banco (OFX ou CSV) · baixa automática quando o valor bate</div><h1>Conciliação${comps.length ? ' de ' + compLabel(fConc.comp) : ''}</h1></div>
    <div class="row">${comps.length ? `<label class="fld" style="width:200px">Competência<select id="cc">${comps.map(c => `<option value="${c}" ${c === fConc.comp ? 'selected' : ''}>${compLabel(c)}</option>`).join('')}</select></label>
    <label class="fld" style="width:220px">Cliente<input id="cq" value="${esc(fConc.q)}" placeholder="Filtrar por nome"></label>` : ''}<label class="btn" style="cursor:pointer">Importar extrato<input type="file" id="ofx" accept=".ofx,.csv,.txt" hidden></label>${comps.length ? '<button class="btn" data-exp>Exportar</button>' : ''}</div></header>`;
   const unHtml = um.map(u => `<div class="alert d"><div><strong>Entrada não identificada:</strong> <span class="num">${brl(u.valor)}</span> em ${dBR(u.data)} — pagador “${esc(u.pagador || u.memo || '—')}”.</div><div class="row" style="align-items:center"><select class="inp sm" style="width:220px" data-ucli="${u.id}"><option value="">Escolha o cliente…</option>${S.clients.map(c => `<option value="${c.id}" ${c.id === u.sug ? 'selected' : ''}>${esc(c.name)}${c.id === u.sug ? ' (sugestão)' : ''}</option>`).join('')}</select><button class="btn sm" data-ign="${u.id}">Descartar</button><button class="btn pri sm" data-lnk="${u.id}">Confirmar vínculo</button></div></div>`).join('');
@@ -562,11 +563,10 @@ function vConciliacao(el) {
     el.innerHTML = head + unHtml + '<div class="card pad hint">Nenhuma cobrança emitida ainda. Elas aparecem aqui depois do envio em “Cobrança do mês”.</div>';
     bindBank(el); return;
   }
-  if (!fConc.comp || !comps.includes(fConc.comp)) fConc.comp = comps.find(c => S.invoices.some(i => i.comp === c && daysLate(i) > 0)) || comps[0];
   const all = S.invoices.filter(i => i.comp === fConc.comp);
   const fat = all.reduce((s, i) => s + i.valor, 0), rec = all.reduce((s, i) => s + Math.min(i.pago, i.valor), 0);
   const venc = all.filter(i => !isPaid(i) && (daysLate(i) > 0 || i.pago > 0)), vv = venc.reduce((s, i) => s + (i.valor - i.pago), 0);
-  const nfp = all.filter(i => i.nf === 'aguardando' || i.nf === 'retida').length;
+  const nfp = all.filter(i => i.nf === 'aguardando' || i.nf === 'retida').length, nfErr = all.filter(i => i.nf === 'erro' || !i.boletoRef).length;
   const tabs = { todos: all, pagos: all.filter(isPaid), parciais: all.filter(i => i.pago > 0 && !isPaid(i)), vencidos: all.filter(i => i.pago === 0 && daysLate(i) > 0), aberto: all.filter(i => i.pago === 0 && daysLate(i) === 0) };
   const list = tabs[fConc.tab].filter(i => !fConc.q || client(i.cid)?.name.toLowerCase().includes(fConc.q.toLowerCase())).sort((a, b) => (b.valor - b.pago > 0.005) - (a.valor - a.pago > 0.005) || a.venc.localeCompare(b.venc));
   el.innerHTML = head + `
@@ -574,22 +574,23 @@ function vConciliacao(el) {
    <div class="card kpi"><div class="k">Faturado</div><div class="v num">${brl(fat)}</div></div>
    <div class="card kpi"><div class="k">Recebido</div><div class="v num" style="color:var(--okf)">${brl(rec)}</div><div class="s">${fat ? pct(rec / fat) : '0%'} do faturado</div></div>
    <div class="card kpi"><div class="k">Vencido</div><div class="v num" style="color:var(--bf)">${brl(vv)}</div><div class="s">${venc.length} cobrança${venc.length !== 1 ? 's' : ''}</div></div>
-   <div class="card kpi"><div class="k">NF aguardando pagamento</div><div class="v num">${nfp}</div><div class="s">emitem sozinhas ao pagar</div></div>
+   <div class="card kpi"><div class="k">NF aguardando pagamento</div><div class="v num">${nfp}</div><div class="s">${nfErr ? `<span style="color:var(--bf);font-weight:600">${nfErr} com falha no boleto/NF</span>` : 'emitem sozinhas ao pagar'}</div></div>
   </div>
   ${unHtml}
   <div class="tabs" role="tablist">${[['todos', 'Todos'], ['pagos', 'Pagos'], ['parciais', 'Parciais'], ['vencidos', 'Vencidos'], ['aberto', 'Em aberto']].map(([k, t]) => `<button class="tab ${fConc.tab === k ? 'on' : ''}" role="tab" aria-selected="${fConc.tab === k}" data-tab="${k}">${t} (${tabs[k].length})</button>`).join('')}</div>
   <div class="card tbw"><table>
    <thead><tr><th>Cliente</th><th>Venc.</th><th class="r">Cobrado</th><th>Pago em</th><th class="r">Recebido</th><th class="r">Diferença</th><th>Status</th><th>Nota fiscal</th><th></th></tr></thead>
    <tbody>${list.map(i => { const c = client(i.cid), st = invStatus(i), nfx = NFTXT[i.nf], dif = i.pago - i.valor; return `<tr style="${st[1] === 'bad' ? 'background:#FFF6F3' : st[1] === 'warn' ? 'background:#FFFBF3' : ''}">
-    <td style="font-weight:600">${esc(c?.name || '—')}${i.boletoRef ? `<div class="sub num" style="font-weight:400">${esc(i.boletoRef)}</div>` : ''}</td><td class="num">${dShort(i.venc)}</td><td class="r num">${nf2(i.valor)}</td><td class="num">${i.pagoEm ? dShort(i.pagoEm) : '—'}</td>
+    <td style="font-weight:600">${esc(c?.name || '—')}${i.boletoRef ? `<div class="sub num" style="font-weight:400">${i.boletoUrl ? `<a class="link" href="${esc(i.boletoUrl)}" target="_blank" rel="noopener">boleto</a>` : esc(i.boletoRef)}${i.nfUrl ? ` · <a class="link" href="${esc(i.nfUrl)}" target="_blank" rel="noopener">NF</a>` : ''}</div>` : ''}</td><td class="num">${dShort(i.venc)}</td><td class="r num">${nf2(i.valor)}</td><td class="num">${i.pagoEm ? dShort(i.pagoEm) : '—'}</td>
     <td class="r num">${i.pago ? nf2(i.pago) : '—'}</td><td class="r num" style="${dif < -0.005 ? 'color:var(--bf);font-weight:600' : 'color:var(--mut)'}">${dif < -0.005 ? '−' + nf2(-dif) : '—'}</td>
     <td><span class="b ${st[1]}">${st[0]}</span></td><td><span class="b ${nfx[1]}" ${i.nfRef ? `title="${esc(i.nfRef)}"` : ''}>${nfx[0]}</span></td>
-    <td class="r" style="white-space:nowrap">${!isPaid(i) ? `<button class="btn sm" data-pay="${i.id}">Registrar pagamento</button> ${daysLate(i) > 0 ? `<button class="btn sm" data-rem="${i.id}">Lembrete</button>` : ''}` : ''}</td></tr>`; }).join('') || '<tr><td colspan="9" class="hint" style="padding:24px">Nada nesta aba.</td></tr>'}</tbody>
+    <td class="r" style="white-space:nowrap">${!i.boletoRef || i.nf === 'erro' ? `<button class="btn sm pri" data-prov="${i.id}">Gerar ${!i.boletoRef ? 'boleto' : 'NF'}</button> ` : ''}${!isPaid(i) ? `<button class="btn sm" data-pay="${i.id}">Registrar pagamento</button> ${daysLate(i) > 0 ? `<button class="btn sm" data-rem="${i.id}">Lembrete</button>` : ''}` : ''}</td></tr>`; }).join('') || '<tr><td colspan="9" class="hint" style="padding:24px">Nada nesta aba.</td></tr>'}</tbody>
   </table></div>`;
   $('#cc', el).addEventListener('change', e => { fConc.comp = e.target.value; vConciliacao(el); });
   $('#cq', el).addEventListener('input', e => { fConc.q = e.target.value; const p = e.target.selectionStart; vConciliacao(el); const i = $('#cq', el); i.focus(); i.setSelectionRange(p, p); });
   el.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { fConc.tab = b.dataset.tab; vConciliacao(el); }));
   el.querySelectorAll('[data-rem]').forEach(b => b.addEventListener('click', () => { const i = S.invoices.find(x => x.id === b.dataset.rem); act(() => api('POST', `/invoices/${i.id}/reminder`), r => `Lembrete enviado para ${client(i.cid).name}${simNote(r)}.`); }));
+  el.querySelectorAll('[data-prov]').forEach(b => b.addEventListener('click', () => act(() => api('POST', `/invoices/${b.dataset.prov}/provider`), 'Boleto/NF gerados.')));
   el.querySelectorAll('[data-pay]').forEach(b => b.addEventListener('click', () => registrarPg(S.invoices.find(x => x.id === b.dataset.pay))));
   el.querySelector('[data-exp]').addEventListener('click', () => download(`conciliacao_${fConc.comp}.csv`, [['cliente', 'vencimento', 'cobrado', 'pago_em', 'recebido', 'status', 'nf', 'boleto'], ...all.map(i => [client(i.cid)?.name, dBR(i.venc), nf2(i.valor), dBR(i.pagoEm), nf2(i.pago), invStatus(i)[0], NFTXT[i.nf][0], i.boletoRef || ''])]));
   bindBank(el);

@@ -16,14 +16,44 @@ contas a pagar, relatórios agendados e painel de insights.
 | Conciliação | Real via importação de extrato **OFX ou CSV** (baixa automática quando o valor bate) e webhook de pagamento |
 | E-mails (cobrança, lembrete, aviso de teste, relatórios) | Real com `SMTP_URL`; sem ele, ficam registrados como "simulado" (`GET /api/outbox`) |
 | Agendador (relatórios e avisos de fim de teste) | Real, roda dentro do processo a cada minuto, sem repetir envio |
-| **Emissão de boleto** | **Simulada** — `server/providers.js` |
-| **Emissão de NF** | **Simulada** — `server/providers.js` |
+| Boleto / Pix | **Asaas** (`BILLING_PROVIDER=asaas`) ou simulado |
+| NFS-e | **Asaas** — emitida na cobrança ("Boleto + NF") ou quando o pagamento quita ("Só boleto") |
+| Baixa de pagamento | Automática pelo webhook da Asaas; extrato OFX/CSV para o que entrar fora da Asaas |
 | Sincronização de dispositivos com a plataforma | Não existe; quantidades entram pela planilha ou pela tela do cliente |
 | Relatório em PDF | Não implementado; relatórios saem em CSV (abre no Excel) |
 
-Para produção falta escolher o provedor de boleto + NFS-e (ex.: Asaas, Iugu, Banco Inter + emissor de NFS-e
-da prefeitura) e implementar um driver com `createCharge` e `issueNF` em `server/providers.js`.
-Multa, juros e desconto de pontualidade marcados no contrato devem ser repassados a esse provedor.
+## Asaas
+
+A integração foi escrita conferindo campos e rotas no pacote oficial da Asaas no npm
+(`@asaasbr/n8n-nodes-asaas`) e em SDKs da comunidade, e testada contra uma API simulada
+(`test/asaas.test.js`). **Ainda não rodou contra a Asaas de verdade** — faça o roteiro de sandbox abaixo antes
+de virar para produção.
+
+O que o sistema faz:
+- No envio da cobrança: procura o cliente na Asaas pelo CNPJ (ou cria) e cria a cobrança com vencimento,
+  valor e `externalReference` = id da cobrança. Se o contrato tem "Multa + juros", manda `fine`/`interest`;
+  se tem "Desconto pontualidade", manda `discount` até o vencimento.
+- "Boleto + NF": agenda e autoriza a NFS-e (`POST /invoices` + `/authorize`) junto com a cobrança.
+- "Só boleto": a NFS-e sai quando o pagamento quita a cobrança.
+- Webhook `PAYMENT_RECEIVED`/`PAYMENT_CONFIRMED` dá baixa (sem duplicar), `INVOICE_AUTHORIZED` guarda o link do PDF,
+  `INVOICE_ERROR` e estornos aparecem no histórico do cliente.
+- Falhou boleto ou NF? A cobrança fica registrada, aparece "Gerar boleto/NF" na Conciliação e o e-mail
+  só é enviado quando o boleto existir.
+
+### Roteiro para ligar
+
+1. Crie conta no sandbox (https://sandbox.asaas.com), gere a chave de API e preencha `ASAAS_*` no `.env`
+   com `ASAAS_ENV=sandbox` e `BILLING_PROVIDER=asaas`.
+2. Configure as notas fiscais na Asaas (dados fiscais da empresa, certificado/prefeitura). Com a contabilidade,
+   defina o serviço municipal (`ASAAS_NF_SERVICO_ID` ou código + nome) e as alíquotas `ASAAS_NF_*`.
+3. Na Asaas, em Integrações > Webhooks, cadastre `https://SEU-DOMINIO/api/webhooks/asaas`, com o token
+   de `ASAAS_WEBHOOK_TOKEN` e os eventos de cobrança e de nota fiscal.
+4. Reinicie (`pm2 restart yuv-financeiro --update-env`), cadastre 1 cliente de teste com CNPJ válido,
+   envie a cobrança, pague no sandbox e confira: baixa automática, NF emitida, link do boleto na Conciliação.
+5. Só então troque para `ASAAS_ENV=production` com a chave de produção.
+
+Sem `ASAAS_API_KEY` ou serviço municipal configurado o sistema nem sobe — de propósito, para não emitir
+cobrança sem NF.
 
 ## Rodar
 
@@ -44,13 +74,24 @@ Testes: `npm test`.
 O `.env` não é carregado sozinho: exporte as variáveis no serviço (systemd/pm2) ou use
 `node --env-file=.env server/index.js`.
 
-### Produção
+### Produção (VPS com nginx + pm2 + certbot)
 
-- Rode atrás de nginx com HTTPS e `COOKIE_SECURE=1`. Exemplo com pm2:
-  `pm2 start server/index.js --name yuv-financeiro --node-args="--env-file=.env"`.
+```bash
+git clone -b claude/blissful-mccarthy-eu7bs3 https://github.com/pettersonpedros/instaladorwhatsapsaas-main-master.git /opt/yuv
+cd /opt/yuv/yuv-financeiro
+sudo bash deploy/instalar.sh financeiro.seudominio.com.br seu@email.com
+```
+
+O script instala um **Node 22 separado** em `/opt/node-v22.22.0` (o instalador do WhatsApp SaaS usa Node 16,
+que não roda este sistema, e trocar o Node global poderia derrubar o WhatsApp SaaS), cria o `.env`,
+sobe no pm2 do root, configura nginx + HTTPS e agenda backup diário em `data/backups`.
+O DNS do domínio precisa apontar para a VPS antes. Depois edite o `.env` (SMTP e Asaas) e rode
+`pm2 restart yuv-financeiro --update-env`.
+
+Atualizar: `git pull && PATH=/opt/node-v22.22.0/bin:$PATH npm ci --omit=dev && pm2 restart yuv-financeiro`.
 - Ou Docker: `docker build -t yuv-financeiro . && docker run -d -p 127.0.0.1:3080:3080 -v yuv-data:/data --env-file .env yuv-financeiro`.
-- **Backup diário de `DATA_DIR`** (é todo o financeiro). Com o processo rodando use
-  `sqlite3 data/yuv.db ".backup data/backup.db"` em vez de copiar o arquivo.
+- **Backup**: `scripts/backup.js` (o instalador agenda diário). Copie `data/backups` para **fora da VPS**
+  (S3, Google Drive, outro servidor) — backup na mesma máquina não protege contra perder a máquina.
 - Rode **uma** instância só: o agendador vive no processo.
 
 ## Estrutura
@@ -61,7 +102,8 @@ server/db.js        esquema SQLite e acesso a dados
 server/services.js  ações que mexem em dinheiro (cobrança, pagamento, extrato, importação)
 server/app.js       rotas da API
 server/scheduler.js relatórios agendados e avisos de fim de teste
-server/providers.js integração de boleto/NF (simulada)
+server/providers.js integração de boleto/NF (Asaas ou simulada)
+deploy/             instalador da VPS e configuração do pm2
 server/mailer.js    envio de e-mail
 public/             interface (mesmo layout do protótipo)
 ```

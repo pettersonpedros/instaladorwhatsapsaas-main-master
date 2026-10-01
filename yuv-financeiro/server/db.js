@@ -50,6 +50,12 @@ CREATE TABLE IF NOT EXISTS outbox (
 CREATE TABLE IF NOT EXISTS job_runs (key TEXT PRIMARY KEY, at TEXT NOT NULL DEFAULT (datetime('now','localtime')));
 `);
 
+/* migrações simples */
+const cols = t => db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
+if (!cols('invoices').includes('nf_url')) db.exec('ALTER TABLE invoices ADD COLUMN nf_url TEXT');
+db.exec('CREATE INDEX IF NOT EXISTS invoices_boleto ON invoices(boleto_ref)');
+db.exec('CREATE INDEX IF NOT EXISTS invoices_nf ON invoices(nf_ref)');
+
 const newId = p => p + crypto.randomBytes(6).toString('hex');
 const J = s => JSON.parse(s);
 
@@ -69,7 +75,7 @@ function saveTable(t) {
 }
 
 /* ---------- clientes ---------- */
-const CLIENT_FIELDS = ['id', 'name', 'cnpj', 'canal', 'status', 'tabela', 'versao', 'indicado', 'diasMin', 'due', 'mode', 'email', 'rules', 'ajustes', 'bloqueio', 'delta', 'trial', 'linhas'];
+const CLIENT_FIELDS = ['id', 'name', 'cnpj', 'canal', 'status', 'tabela', 'versao', 'indicado', 'diasMin', 'due', 'mode', 'email', 'rules', 'ajustes', 'bloqueio', 'delta', 'trial', 'linhas', 'asaasId'];
 function pickClient(c) { const o = {}; CLIENT_FIELDS.forEach(k => { o[k] = c[k]; }); return o; }
 function getClient(id) { const r = db.prepare('SELECT doc FROM clients WHERE id=?').get(id); return r ? J(r.doc) : null; }
 function listClients() { return db.prepare('SELECT doc FROM clients ORDER BY rowid').all().map(r => J(r.doc)); }
@@ -85,7 +91,7 @@ function historyOf(cid, limit = 200) {
 }
 
 /* ---------- cobranças ---------- */
-const invRow = r => ({ id: r.id, cid: r.cid, comp: r.comp, valor: r.valor, venc: r.venc, mode: r.mode, pago: r.pago, pagoEm: r.pago_em, nf: r.nf, items: J(r.items), boletoRef: r.boleto_ref, boletoUrl: r.boleto_url, nfRef: r.nf_ref });
+const invRow = r => ({ id: r.id, cid: r.cid, comp: r.comp, valor: r.valor, venc: r.venc, mode: r.mode, pago: r.pago, pagoEm: r.pago_em, nf: r.nf, items: J(r.items), boletoRef: r.boleto_ref, boletoUrl: r.boleto_url, nfRef: r.nf_ref, nfUrl: r.nf_url });
 function listInvoices() { return db.prepare('SELECT * FROM invoices ORDER BY comp, created_at').all().map(invRow); }
 function getInvoice(id) { const r = db.prepare('SELECT * FROM invoices WHERE id=?').get(id); return r ? invRow(r) : null; }
 function insertInvoice(i) {
@@ -93,8 +99,8 @@ function insertInvoice(i) {
     .run({ boletoRef: null, boletoUrl: null, nfRef: null, createdBy: null, pagoEm: null, ...i, items: JSON.stringify(i.items || []) });
 }
 function updateInvoice(i) {
-  db.prepare('UPDATE invoices SET pago=@pago, pago_em=@pagoEm, nf=@nf, boleto_ref=@boletoRef, boleto_url=@boletoUrl, nf_ref=@nfRef WHERE id=@id')
-    .run({ id: i.id, pago: i.pago, pagoEm: i.pagoEm || null, nf: i.nf, boletoRef: i.boletoRef || null, boletoUrl: i.boletoUrl || null, nfRef: i.nfRef || null });
+  db.prepare('UPDATE invoices SET pago=@pago, pago_em=@pagoEm, nf=@nf, boleto_ref=@boletoRef, boleto_url=@boletoUrl, nf_ref=@nfRef, nf_url=@nfUrl WHERE id=@id')
+    .run({ id: i.id, pago: i.pago, pagoEm: i.pagoEm || null, nf: i.nf, boletoRef: i.boletoRef || null, boletoUrl: i.boletoUrl || null, nfRef: i.nfRef || null, nfUrl: i.nfUrl || null });
 }
 
 /* ---------- banco ---------- */

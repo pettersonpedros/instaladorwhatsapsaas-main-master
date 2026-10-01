@@ -36,7 +36,7 @@ store.tx(() => {
   clients.forEach(x => { store.saveClient(x); store.addHistory(x.id, 'Dados de demonstração carregados', 'sistema'); });
 
   const venc = (cp, d) => `${D.nextComp(cp)}-${String(d).padStart(2, '0')}`;
-  const inv = (cid, cp, valor, due, mode, pago, pagoEm) => store.insertInvoice({ id: store.newId('i'), cid, comp: cp, valor, venc: venc(cp, due), mode, pago, pagoEm, nf: D.nfState(mode, valor, pago), items: [] });
+  const inv = (cid, cp, valor, due, mode, pago, pagoEm) => { const id = store.newId('i'); store.insertInvoice({ id, cid, comp: cp, valor, venc: venc(cp, due), mode, pago, pagoEm, nf: D.nfState(mode, valor, pago), items: [], boletoRef: 'DEMO-' + id.slice(1, 7).toUpperCase(), nfRef: mode === 'now' || pago >= valor ? 'DEMO-NF' : null }); }
   inv('c', prev2, 9356, 15, 'now', 9356, venc(prev2, 15)); inv('a', prev2, 4418, 15, 'now', 4418, venc(prev2, 14));
   inv('g', prev2, 990, 15, 'now', 990, venc(prev2, 15)); inv('d', prev2, 510, 15, 'later', 380, venc(prev2, 18));
   inv('e', prev2, 3072, 15, 'now', 0, null); inv('b', prev2, 2098, 10, 'later', 0, null);
